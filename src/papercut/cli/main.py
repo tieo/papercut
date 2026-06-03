@@ -170,6 +170,80 @@ def _cmd_data_resample(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_data_fair_split(args: argparse.Namespace) -> int:
+    """Resample disjoint-doc train/test streams from a corpus.
+
+    Unique docs (PageRef.source values) are partitioned by `train_frac`.
+    Train streams sample from the train docs only, test streams from the
+    test docs only. Eliminates the memorisation confound from the simpler
+    resample-streams command.
+    """
+    import math
+
+    from papercut.data.loaders.hf import HfPssCorpus
+    from papercut.streams.types import PageRef, Stream
+
+    src = Path(args.in_path)
+    if not src.exists():
+        print(f"Corpus not found: {src}", file=sys.stderr)
+        return 2
+    corpus = HfPssCorpus.load_from_disk(src)
+
+    docs: dict[str, list[PageRef]] = {}
+    for stream in corpus.streams:
+        for page in stream.pages:
+            docs.setdefault(page.source, []).append(page)
+    unique_docs = sorted(docs.keys())
+    rng = random.Random(args.seed)
+    rng.shuffle(unique_docs)
+    cut = max(1, int(len(unique_docs) * args.train_frac))
+    train_docs, test_docs = unique_docs[:cut], unique_docs[cut:]
+    if not train_docs or not test_docs:
+        print("Both splits must be non-empty", file=sys.stderr)
+        return 2
+
+    def _poisson(lam: float) -> int:
+        target = math.exp(-lam)
+        k = 0
+        p = 1.0
+        while True:
+            k += 1
+            p *= rng.random()
+            if p < target:
+                return k - 1
+
+    def _build_streams(doc_pool: list[str], n_streams: int) -> list[Stream]:
+        streams: list[Stream] = []
+        for _ in range(n_streams):
+            n_docs = max(1, min(len(doc_pool), _poisson(args.mean_docs)))
+            chosen = rng.sample(doc_pool, k=n_docs)
+            pages: list[PageRef] = []
+            boundaries: list[bool] = []
+            for doc_id in chosen:
+                doc_pages = sorted(docs[doc_id], key=lambda p: p.page)
+                for i, p in enumerate(doc_pages):
+                    pages.append(p)
+                    boundaries.append(i == 0)
+            streams.append(Stream(pages=tuple(pages), boundaries=tuple(boundaries)))
+        return streams
+
+    train_streams = _build_streams(train_docs, args.n_train)
+    test_streams = _build_streams(test_docs, args.n_test)
+
+    texts = dict(corpus._texts)
+    HfPssCorpus(streams=train_streams, _texts=texts).save(Path(args.train_out))
+    HfPssCorpus(streams=test_streams, _texts=texts).save(Path(args.test_out))
+    print(
+        f"Train: {len(train_streams)} streams "
+        f"({sum(len(s) for s in train_streams)} pages, {len(train_docs)} unique docs) -> {args.train_out}"
+    )
+    print(
+        f"Test:  {len(test_streams)} streams "
+        f"({sum(len(s) for s in test_streams)} pages, {len(test_docs)} unique docs) -> {args.test_out}"
+    )
+    return 0
+
+
 def _build_model(name: str, resolver: object) -> object:
     if name == "trivial:every-page":
         from papercut.models.baselines.trivial import EveryPageNewDoc
@@ -273,14 +347,27 @@ def _cmd_eval_run(args: argparse.Namespace) -> int:
         return 2
 
     corpus = HfPssCorpus.load_from_disk(corpus_path)
-    streams = corpus.streams
-    cut = max(1, int(len(streams) * args.train_frac))
-    train, test = streams[:cut], streams[cut:]
-    if not test:
-        print("Need at least one test stream; lower --train-frac", file=sys.stderr)
-        return 2
+    if args.test_corpus:
+        test_path = Path(args.test_corpus)
+        if not test_path.exists():
+            print(f"Test corpus not found: {test_path}", file=sys.stderr)
+            return 2
+        test_corpus = HfPssCorpus.load_from_disk(test_path)
+        train, test = corpus.streams, test_corpus.streams
+        combined_texts = {**corpus._texts, **test_corpus._texts}
+        resolver_corpus = HfPssCorpus(
+            streams=[*corpus.streams, *test_corpus.streams], _texts=combined_texts
+        )
+    else:
+        streams = corpus.streams
+        cut = max(1, int(len(streams) * args.train_frac))
+        train, test = streams[:cut], streams[cut:]
+        if not test:
+            print("Need at least one test stream; lower --train-frac", file=sys.stderr)
+            return 2
+        resolver_corpus = corpus
 
-    model = _build_model(args.model, corpus)
+    model = _build_model(args.model, resolver_corpus)
     if callable(getattr(model, "fit", None)):
         print(f"Fitting {args.model} on {len(train)} streams...")
         model.fit(train)  # type: ignore[attr-defined]
@@ -383,6 +470,20 @@ def _build_parser() -> argparse.ArgumentParser:
     resamp.add_argument("--seed", type=int, default=0)
     resamp.set_defaults(func=_cmd_data_resample)
 
+    fair = data_sub.add_parser(
+        "fair-split",
+        help="Resample disjoint-doc train/test streams.",
+    )
+    fair.add_argument("--in", dest="in_path", required=True)
+    fair.add_argument("--train-out", required=True)
+    fair.add_argument("--test-out", required=True)
+    fair.add_argument("--n-train", type=int, default=400)
+    fair.add_argument("--n-test", type=int, default=100)
+    fair.add_argument("--mean-docs", type=float, default=3.0)
+    fair.add_argument("--train-frac", type=float, default=0.8)
+    fair.add_argument("--seed", type=int, default=0)
+    fair.set_defaults(func=_cmd_data_fair_split)
+
     streams = sub.add_parser("streams", help="Build labeled stream corpora.")
     streams_sub = streams.add_subparsers(dest="streams_command", required=True)
     build = streams_sub.add_parser(
@@ -418,6 +519,11 @@ def _build_parser() -> argparse.ArgumentParser:
     eval_run.add_argument("--corpus", required=True, help="Path to a saved HfPssCorpus.")
     eval_run.add_argument("--model", required=True, choices=MODEL_CHOICES)
     eval_run.add_argument("--train-frac", type=float, default=0.8)
+    eval_run.add_argument(
+        "--test-corpus",
+        default=None,
+        help="Optional separate test corpus path; overrides --train-frac.",
+    )
     eval_run.set_defaults(func=_cmd_eval_run)
 
     return parser
