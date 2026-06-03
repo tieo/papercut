@@ -29,19 +29,22 @@ class TfIdfXgb:
     def __init__(
         self,
         resolver: PageResolver,
-        char_ngram_range: tuple[int, int] = (3, 5),
+        ngram_range: tuple[int, int] = (1, 2),
+        analyzer: str = "word",
         max_features: int = 20_000,
         n_estimators: int = 100,
         max_depth: int = 4,
         learning_rate: float = 0.1,
+        max_chars_per_page: int = 4000,
         random_state: int = 0,
     ) -> None:
         self.resolver = resolver
+        self.max_chars_per_page = max_chars_per_page
         self.vectorizer = TfidfVectorizer(
-            analyzer="char_wb",
-            ngram_range=char_ngram_range,
+            analyzer=analyzer,
+            ngram_range=ngram_range,
             max_features=max_features,
-            lowercase=False,
+            lowercase=True,
             sublinear_tf=True,
         )
         self.model = xgb.XGBClassifier(
@@ -50,12 +53,25 @@ class TfIdfXgb:
             learning_rate=learning_rate,
             n_jobs=-1,
             eval_metric="logloss",
+            tree_method="hist",
             random_state=random_state,
         )
         self._fitted = False
 
     def _texts(self, stream: Stream) -> list[str]:
-        return [self.resolver.text(p) for p in stream.pages]
+        return [self._truncate(self.resolver.text(p)) for p in stream.pages]
+
+    def _truncate(self, text: str) -> str:
+        """Cap text to the first and last `max_chars_per_page // 2` characters.
+
+        Letterheads, addressee blocks, and signature blocks (the PSS signal)
+        live at page edges; the middle body adds tokens without adding signal,
+        and the vectorizer gets quadratically slower with longer inputs.
+        """
+        half = self.max_chars_per_page // 2
+        if len(text) <= self.max_chars_per_page:
+            return text
+        return text[:half] + " " + text[-half:]
 
     def _pair_features(self, page_vecs: csr_matrix) -> csr_matrix:
         """Build (n-1, 2*d) sparse matrix of (prev, curr) feature pairs."""
@@ -111,6 +127,7 @@ class TfIdfXgb:
             "vectorizer": self.vectorizer,
             "model": self.model,
             "fitted": self._fitted,
+            "max_chars_per_page": self.max_chars_per_page,
         }
         with open(path, "wb") as f:
             pickle.dump(state, f)
@@ -127,6 +144,7 @@ class TfIdfXgb:
             state = pickle.load(f)
         instance = cls.__new__(cls)
         instance.resolver = resolver
+        instance.max_chars_per_page = state.get("max_chars_per_page", 4000)
         instance.vectorizer = state["vectorizer"]
         instance.model = state["model"]
         instance._fitted = state["fitted"]
