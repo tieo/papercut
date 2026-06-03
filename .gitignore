@@ -44,3 +44,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Claude harness scratch
+.claude/
