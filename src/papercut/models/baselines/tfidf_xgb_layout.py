@@ -136,9 +136,6 @@ class TfIdfXgbLayout:
             raise ValueError("Need at least one multi-page stream to fit")
         x_train = vstack(blocks).tocsr()
         y_train = np.asarray(labels, dtype=np.int32)
-        n_pos = max(1, int(y_train.sum()))
-        n_neg = max(1, len(y_train) - n_pos)
-        self.model.set_params(scale_pos_weight=n_neg / n_pos)
         self.model.fit(x_train, y_train)
         self._fitted = True
 
