@@ -43,24 +43,41 @@ class HfPssCorpus:
 
     streams: list[Stream]
     _texts: dict[PageRef, str] = field(default_factory=dict)
+    _layouts: dict[PageRef, list[float]] = field(default_factory=dict)
 
     def text(self, page: PageRef) -> str:
         if page not in self._texts:
             raise KeyError(f"No text for {page}; corpus may be image-only")
         return self._texts[page]
 
+    def layout(self, page: PageRef) -> list[float]:
+        if page not in self._layouts:
+            raise KeyError(f"No layout for {page}; corpus has no layout features")
+        return self._layouts[page]
+
+    def has_layouts(self) -> bool:
+        return bool(self._layouts)
+
     def save(self, path: str | Path) -> None:
         """Pickle the corpus to disk for reuse.
 
-        Streams plus text cache; format is internal and unstable. Use this for
-        caching a downloaded slice across dev sessions, not for sharing.
+        Streams plus text cache (and layouts if present); format is internal
+        and unstable. Use this for caching a downloaded slice across dev
+        sessions, not for sharing.
         """
         import pickle
 
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as f:
-            pickle.dump({"streams": self.streams, "texts": self._texts}, f)
+            pickle.dump(
+                {
+                    "streams": self.streams,
+                    "texts": self._texts,
+                    "layouts": self._layouts,
+                },
+                f,
+            )
 
     @classmethod
     def load_from_disk(cls, path: str | Path) -> HfPssCorpus:
@@ -69,7 +86,11 @@ class HfPssCorpus:
 
         with Path(path).open("rb") as f:
             state = pickle.load(f)
-        return cls(streams=state["streams"], _texts=state["texts"])
+        return cls(
+            streams=state["streams"],
+            _texts=state["texts"],
+            _layouts=state.get("layouts", {}),
+        )
 
 
 def _row_to_stream(

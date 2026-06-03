@@ -325,6 +325,22 @@ def _build_model(name: str, resolver: object) -> object:
         from papercut.models.baselines.minilm_xgb import MiniLMXgb
 
         return MiniLMXgb(resolver=resolver)  # type: ignore[arg-type]
+    if name == "tfidf-xgb-layout":
+        from papercut.models.baselines.tfidf_xgb_layout import TfIdfXgbLayout
+
+        return TfIdfXgbLayout(corpus=resolver)  # type: ignore[arg-type]
+    if name == "ensemble:text-sim+tfidf-xgb-layout":
+        from papercut.models.baselines.text_similarity import TextSimilarityBaseline
+        from papercut.models.baselines.tfidf_xgb_layout import TfIdfXgbLayout
+        from papercut.models.ensembles.late import LateEnsemble
+
+        return LateEnsemble(
+            submodels=[
+                TextSimilarityBaseline(resolver=resolver),  # type: ignore[arg-type]
+                TfIdfXgbLayout(corpus=resolver),  # type: ignore[arg-type]
+            ],
+            name="ensemble:text-sim+tfidf-xgb-layout",
+        )
     if name == "viterbi:ensemble":
         from papercut.models.baselines.text_similarity import TextSimilarityBaseline
         from papercut.models.baselines.tfidf_xgb import TfIdfXgb
@@ -353,6 +369,8 @@ MODEL_CHOICES = (
     "ensemble:text-sim+tfidf-xgb-rich",
     "multilingual-minilm",
     "minilm-xgb",
+    "tfidf-xgb-layout",
+    "ensemble:text-sim+tfidf-xgb-layout",
     "ensemble:rich+minilm",
     "viterbi:text-similarity",
     "viterbi:tfidf-xgb",
