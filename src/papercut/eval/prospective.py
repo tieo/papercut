@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from papercut.eval.runner import EvalReport, evaluate
-from papercut.models.base import Model, TrainableModel
+from papercut.models.base import Model
 from papercut.streams.types import Stream
 
 
@@ -53,8 +53,8 @@ def walk_forward(
         train_names = tuple(s.name for s in slices[: i + 1])
 
         for model in models:
-            if isinstance(model, TrainableModel):
-                model.fit(train_streams)
+            if callable(getattr(model, "fit", None)):
+                model.fit(train_streams)  # type: ignore[attr-defined]
             report = evaluate(model, test_slice.streams)
             results.append(
                 SliceResult(

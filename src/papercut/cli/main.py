@@ -100,6 +100,49 @@ def _build_model(name: str, resolver: object) -> object:
         from papercut.models.baselines.tfidf_xgb import TfIdfXgb
 
         return TfIdfXgb(resolver=resolver)  # type: ignore[arg-type]
+    if name == "ensemble:text-sim+tfidf-xgb":
+        from papercut.models.baselines.text_similarity import TextSimilarityBaseline
+        from papercut.models.baselines.tfidf_xgb import TfIdfXgb
+        from papercut.models.ensembles.late import LateEnsemble
+
+        return LateEnsemble(
+            submodels=[
+                TextSimilarityBaseline(resolver=resolver),  # type: ignore[arg-type]
+                TfIdfXgb(resolver=resolver),  # type: ignore[arg-type]
+            ],
+            name="ensemble:text-sim+tfidf-xgb",
+        )
+    if name == "viterbi:text-similarity":
+        from papercut.models.baselines.text_similarity import TextSimilarityBaseline
+        from papercut.models.smoothing.viterbi import SequenceSmoothed
+
+        return SequenceSmoothed(
+            submodel=TextSimilarityBaseline(resolver=resolver),  # type: ignore[arg-type]
+            name="viterbi:text-similarity",
+        )
+    if name == "viterbi:tfidf-xgb":
+        from papercut.models.baselines.tfidf_xgb import TfIdfXgb
+        from papercut.models.smoothing.viterbi import SequenceSmoothed
+
+        return SequenceSmoothed(
+            submodel=TfIdfXgb(resolver=resolver),  # type: ignore[arg-type]
+            name="viterbi:tfidf-xgb",
+        )
+    if name == "viterbi:ensemble":
+        from papercut.models.baselines.text_similarity import TextSimilarityBaseline
+        from papercut.models.baselines.tfidf_xgb import TfIdfXgb
+        from papercut.models.ensembles.late import LateEnsemble
+        from papercut.models.smoothing.viterbi import SequenceSmoothed
+
+        return SequenceSmoothed(
+            submodel=LateEnsemble(
+                submodels=[
+                    TextSimilarityBaseline(resolver=resolver),  # type: ignore[arg-type]
+                    TfIdfXgb(resolver=resolver),  # type: ignore[arg-type]
+                ],
+            ),
+            name="viterbi:ensemble",
+        )
     raise ValueError(f"Unknown model: {name}")
 
 
@@ -108,13 +151,16 @@ MODEL_CHOICES = (
     "trivial:never-split",
     "text-similarity",
     "tfidf-xgb",
+    "ensemble:text-sim+tfidf-xgb",
+    "viterbi:text-similarity",
+    "viterbi:tfidf-xgb",
+    "viterbi:ensemble",
 )
 
 
 def _cmd_eval_run(args: argparse.Namespace) -> int:
     from papercut.data.loaders.hf import HfPssCorpus
     from papercut.eval.runner import evaluate
-    from papercut.models.base import TrainableModel
 
     corpus_path = Path(args.corpus)
     if not corpus_path.exists():
@@ -130,9 +176,9 @@ def _cmd_eval_run(args: argparse.Namespace) -> int:
         return 2
 
     model = _build_model(args.model, corpus)
-    if isinstance(model, TrainableModel):
+    if callable(getattr(model, "fit", None)):
         print(f"Fitting {args.model} on {len(train)} streams...")
-        model.fit(train)
+        model.fit(train)  # type: ignore[attr-defined]
 
     report = evaluate(model, test)
     print(

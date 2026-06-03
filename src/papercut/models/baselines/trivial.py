@@ -19,6 +19,9 @@ class EveryPageNewDoc:
     def predict_boundaries(self, stream: Stream) -> tuple[bool, ...]:
         return tuple([True] * len(stream))
 
+    def predict_probs(self, stream: Stream) -> tuple[float, ...]:
+        return tuple([1.0] * len(stream))
+
 
 @dataclass(frozen=True)
 class NeverSplit:
@@ -34,3 +37,6 @@ class NeverSplit:
 
     def predict_boundaries(self, stream: Stream) -> tuple[bool, ...]:
         return tuple([True] + [False] * (len(stream) - 1))
+
+    def predict_probs(self, stream: Stream) -> tuple[float, ...]:
+        return tuple([1.0] + [0.0] * (len(stream) - 1))

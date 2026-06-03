@@ -21,6 +21,18 @@ class Model(Protocol):
 
 
 @runtime_checkable
+class ProbabilisticModel(Model, Protocol):
+    """A `Model` that also emits per-page boundary probabilities.
+
+    The probability at position 0 is always 1.0 by convention (page 0 starts
+    a document by definition). Probabilities are needed for late ensembling
+    and for sequence-smoothing decoders (Viterbi, CRF).
+    """
+
+    def predict_probs(self, stream: Stream) -> tuple[float, ...]: ...
+
+
+@runtime_checkable
 class TrainableModel(Model, Protocol):
     """A `Model` that can be fit on labeled streams."""
 

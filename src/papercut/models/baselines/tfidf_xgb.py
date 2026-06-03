@@ -111,15 +111,19 @@ class TfIdfXgb:
         self._fitted = True
 
     def predict_boundaries(self, stream: Stream) -> tuple[bool, ...]:
+        probs = self.predict_probs(stream)
+        return (True, *(p > 0.5 for p in probs[1:]))
+
+    def predict_probs(self, stream: Stream) -> tuple[float, ...]:
         if not self._fitted:
-            raise RuntimeError("TfIdfXgb must be fit before predict_boundaries")
+            raise RuntimeError("TfIdfXgb must be fit before predict_probs")
         texts = self._texts(stream)
         if len(texts) < 2:
-            return (True,)
+            return (1.0,)
         page_vecs = self.vectorizer.transform(texts)
         pair_features = self._pair_features(page_vecs)
-        preds = self.model.predict(pair_features).astype(bool).tolist()
-        return (True, *preds)
+        proba = self.model.predict_proba(pair_features)[:, 1].tolist()
+        return (1.0, *proba)
 
     def save(self, path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
