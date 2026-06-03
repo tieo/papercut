@@ -30,25 +30,75 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(union)
 
 
-def _cross_page_features(prev: str, curr: str, head: int = 200, foot: int = 200) -> list[float]:
-    """Five language-agnostic similarity signals between consecutive pages.
+def _digit_run_count(text: str) -> int:
+    """Count maximal runs of 1 to 4 digits. Approximates page numbers and IDs."""
+    count = 0
+    in_run = False
+    run_len = 0
+    for c in text:
+        if c.isdigit():
+            in_run = True
+            run_len += 1
+        else:
+            if in_run and 1 <= run_len <= 4:
+                count += 1
+            in_run = False
+            run_len = 0
+    if in_run and 1 <= run_len <= 4:
+        count += 1
+    return count
+
+
+def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300) -> list[float]:
+    """Language-agnostic similarity signals between consecutive pages.
 
     Head and tail similarity catch shared letterheads and footers (strong
     same-doc cue). Full-text Jaccard catches body-text overlap. Length
-    asymmetry catches the cover-page / continuation-page contrast.
+    asymmetry catches the cover-page / continuation-page contrast. The
+    extra-narrow head/foot windows (50 chars) emphasise the very-top and
+    very-bottom layout regions; digit-run counts in the footer approximate
+    page-number presence without depending on a specific language pattern.
     """
     prev_head = prev[:head]
     curr_head = curr[:head]
     prev_foot = prev[-foot:]
     curr_foot = curr[-foot:]
+    prev_top = prev[:50]
+    curr_top = curr[:50]
+    prev_bot = prev[-50:]
+    curr_bot = curr[-50:]
+
     head_sim = _jaccard(_char_ngrams(prev_head, 4), _char_ngrams(curr_head, 4))
     foot_sim = _jaccard(_char_ngrams(prev_foot, 4), _char_ngrams(curr_foot, 4))
     full_sim = _jaccard(_char_ngrams(prev, 4), _char_ngrams(curr, 4))
+    top_sim = _jaccard(_char_ngrams(prev_top, 3), _char_ngrams(curr_top, 3))
+    bot_sim = _jaccard(_char_ngrams(prev_bot, 3), _char_ngrams(curr_bot, 3))
+
+    prev_words = set(prev_head.lower().split())
+    curr_words = set(curr_head.lower().split())
+    head_word_sim = _jaccard(prev_words, curr_words)
+
     prev_len = max(1, len(prev))
     curr_len = max(1, len(curr))
     len_ratio = min(prev_len, curr_len) / max(prev_len, curr_len)
     log_len_diff = abs(np.log1p(prev_len) - np.log1p(curr_len))
-    return [head_sim, foot_sim, full_sim, len_ratio, float(log_len_diff)]
+
+    prev_digits = _digit_run_count(prev_foot)
+    curr_digits = _digit_run_count(curr_foot)
+
+    return [
+        head_sim,
+        foot_sim,
+        full_sim,
+        top_sim,
+        bot_sim,
+        head_word_sim,
+        len_ratio,
+        float(log_len_diff),
+        float(prev_digits),
+        float(curr_digits),
+        float(abs(prev_digits - curr_digits)),
+    ]
 
 
 if TYPE_CHECKING:
