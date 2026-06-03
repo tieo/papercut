@@ -16,6 +16,9 @@ dependencies = [
     "pydantic>=2.7",
 ]
 
+[project.scripts]
+papercut = "papercut.cli:main"
+
 [project.optional-dependencies]
 classical = [
     "scikit-learn>=1.4",
