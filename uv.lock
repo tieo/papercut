@@ -2818,8 +2818,11 @@ classical = [
     { name = "scipy" },
     { name = "xgboost" },
 ]
-ml = [
+hf = [
     { name = "datasets" },
+    { name = "huggingface-hub" },
+]
+ml = [
     { name = "sentence-transformers" },
     { name = "torch" },
     { name = "transformers" },
@@ -2839,6 +2842,8 @@ track = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "datasets" },
+    { name = "huggingface-hub" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pypdf" },
@@ -2854,7 +2859,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "augraphy", marker = "extra == 'augment'", specifier = ">=8.2" },
-    { name = "datasets", marker = "extra == 'ml'", specifier = ">=2.19" },
+    { name = "datasets", marker = "extra == 'hf'", specifier = ">=2.19" },
+    { name = "huggingface-hub", marker = "extra == 'hf'", specifier = ">=0.23" },
     { name = "mlflow", marker = "extra == 'track'", specifier = ">=2.13" },
     { name = "paddleocr", marker = "extra == 'ocr'", specifier = ">=2.7" },
     { name = "pdf2image", marker = "extra == 'pdf'", specifier = ">=1.17" },
@@ -2869,10 +2875,12 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'ml'", specifier = ">=4.41" },
     { name = "xgboost", marker = "extra == 'classical'", specifier = ">=2.0" },
 ]
-provides-extras = ["classical", "ml", "ocr", "pdf", "augment", "track"]
+provides-extras = ["classical", "hf", "ml", "ocr", "pdf", "augment", "track"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "datasets", specifier = ">=2.19" },
+    { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "pre-commit", specifier = ">=3.7" },
     { name = "pypdf", specifier = ">=5.0" },

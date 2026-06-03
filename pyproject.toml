@@ -25,10 +25,13 @@ classical = [
     "xgboost>=2.0",
     "scipy>=1.13",
 ]
+hf = [
+    "datasets>=2.19",
+    "huggingface-hub>=0.23",
+]
 ml = [
     "torch>=2.3",
     "transformers>=4.41",
-    "datasets>=2.19",
     "sentence-transformers>=3.0",
 ]
 ocr = [
@@ -59,6 +62,8 @@ dev = [
     "scikit-learn>=1.4",
     "xgboost>=2.0",
     "scipy>=1.13",
+    "datasets>=2.19",
+    "huggingface-hub>=0.23",
 ]
 
 [build-system]
