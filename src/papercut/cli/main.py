@@ -305,6 +305,22 @@ def _build_model(name: str, resolver: object) -> object:
             ],
             name="ensemble:text-sim+tfidf-xgb-rich",
         )
+    if name == "multilingual-minilm":
+        from papercut.models.baselines.multilingual_minilm import MultilingualMiniLM
+
+        return MultilingualMiniLM(resolver=resolver)  # type: ignore[arg-type]
+    if name == "ensemble:rich+minilm":
+        from papercut.models.baselines.multilingual_minilm import MultilingualMiniLM
+        from papercut.models.baselines.tfidf_xgb_rich import TfIdfXgbRich
+        from papercut.models.ensembles.late import LateEnsemble
+
+        return LateEnsemble(
+            submodels=[
+                TfIdfXgbRich(resolver=resolver),  # type: ignore[arg-type]
+                MultilingualMiniLM(resolver=resolver),  # type: ignore[arg-type]
+            ],
+            name="ensemble:rich+minilm",
+        )
     if name == "viterbi:ensemble":
         from papercut.models.baselines.text_similarity import TextSimilarityBaseline
         from papercut.models.baselines.tfidf_xgb import TfIdfXgb
@@ -331,6 +347,8 @@ MODEL_CHOICES = (
     "tfidf-xgb-rich",
     "ensemble:text-sim+tfidf-xgb",
     "ensemble:text-sim+tfidf-xgb-rich",
+    "multilingual-minilm",
+    "ensemble:rich+minilm",
     "viterbi:text-similarity",
     "viterbi:tfidf-xgb",
     "viterbi:ensemble",
