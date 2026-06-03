@@ -83,6 +83,67 @@ def _cmd_data_download_tabme(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_model(name: str, resolver: object) -> object:
+    if name == "trivial:every-page":
+        from papercut.models.baselines.trivial import EveryPageNewDoc
+
+        return EveryPageNewDoc()
+    if name == "trivial:never-split":
+        from papercut.models.baselines.trivial import NeverSplit
+
+        return NeverSplit()
+    if name == "text-similarity":
+        from papercut.models.baselines.text_similarity import TextSimilarityBaseline
+
+        return TextSimilarityBaseline(resolver=resolver)  # type: ignore[arg-type]
+    if name == "tfidf-xgb":
+        from papercut.models.baselines.tfidf_xgb import TfIdfXgb
+
+        return TfIdfXgb(resolver=resolver)  # type: ignore[arg-type]
+    raise ValueError(f"Unknown model: {name}")
+
+
+MODEL_CHOICES = (
+    "trivial:every-page",
+    "trivial:never-split",
+    "text-similarity",
+    "tfidf-xgb",
+)
+
+
+def _cmd_eval_run(args: argparse.Namespace) -> int:
+    from papercut.data.loaders.hf import HfPssCorpus
+    from papercut.eval.runner import evaluate
+    from papercut.models.base import TrainableModel
+
+    corpus_path = Path(args.corpus)
+    if not corpus_path.exists():
+        print(f"Corpus not found: {corpus_path}", file=sys.stderr)
+        return 2
+
+    corpus = HfPssCorpus.load_from_disk(corpus_path)
+    streams = corpus.streams
+    cut = max(1, int(len(streams) * args.train_frac))
+    train, test = streams[:cut], streams[cut:]
+    if not test:
+        print("Need at least one test stream; lower --train-frac", file=sys.stderr)
+        return 2
+
+    model = _build_model(args.model, corpus)
+    if isinstance(model, TrainableModel):
+        print(f"Fitting {args.model} on {len(train)} streams...")
+        model.fit(train)
+
+    report = evaluate(model, test)
+    print(
+        f"{args.model:24s}  page_f1={report.page_f1_mean:.3f}  "
+        f"pq={report.pq_mean:.3f}  stp={report.stp:.3f}  "
+        f"mndd_mean={report.mndd_mean:.2f}  "
+        f"(test_n={report.n_streams})"
+    )
+    return 0
+
+
 def _cmd_eval_prospective_smoke(_: argparse.Namespace) -> int:
     from papercut.eval.prospective import Slice, format_results, walk_forward
     from papercut.models.baselines.trivial import EveryPageNewDoc, NeverSplit
@@ -144,6 +205,11 @@ def _build_parser() -> argparse.ArgumentParser:
     eval_sub.add_parser(
         "prospective-smoke", help="Run a walk-forward demo on synthetic slices."
     ).set_defaults(func=_cmd_eval_prospective_smoke)
+    eval_run = eval_sub.add_parser("run", help="Evaluate a model on a saved HfPssCorpus pickle.")
+    eval_run.add_argument("--corpus", required=True, help="Path to a saved HfPssCorpus.")
+    eval_run.add_argument("--model", required=True, choices=MODEL_CHOICES)
+    eval_run.add_argument("--train-frac", type=float, default=0.8)
+    eval_run.set_defaults(func=_cmd_eval_run)
 
     return parser
 
