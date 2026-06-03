@@ -13,27 +13,7 @@ Page Stream Segmentation for [paperless-ngx](https://github.com/paperless-ngx/pa
 
 ## Status
 
-Pre-alpha. The pipeline runs end to end on real TABME++ data: download a slice with `papercut data download`, evaluate any registered model with `papercut eval run`. Four baselines so far (two trivial, one zero-shot text-similarity, one trainable TF-IDF + XGBoost). Bigger models (DiT, LayoutXLM, multilingual MiniLM) and OCR-on-scan integration are next.
-
-### Measured baseline numbers
-
-100 TABME++ test streams (3,103 pages). Single train/test split (80/20):
-
-| Model | page F1 | PQ | STP | MNDD |
-|---|---|---|---|---|
-| trivial:every-page | 0.510 | 0.258 | 0.000 | 19.55 |
-| trivial:never-split | 0.000 | 0.014 | 0.000 | 20.35 |
-| **text-similarity** | **0.688** | 0.492 | **0.050** | 10.40 |
-| tfidf-xgb | 0.612 | **0.485** | 0.000 | **9.90** |
-
-Walk-forward prospective eval, 4 consecutive slices (train on s0..s_{i-1}, test on s_i):
-
-| Model | slice | page F1 | PQ | MNDD |
-|---|---|---|---|---|
-| text-similarity | s1 / s2 / s3 | 0.683 / 0.638 / 0.700 | 0.491 / 0.454 / 0.500 | 12.60 / 14.48 / 10.12 |
-| tfidf-xgb       | s1 / s2 / s3 | 0.644 / 0.608 / 0.633 | 0.513 / 0.472 / 0.490 |  10.16 /  10.08 /  9.32 |
-
-text-similarity (char-4-gram Jaccard between consecutive pages, zero training, language-agnostic) consistently wins on page F1. tfidf-xgb consistently wins on document-level metrics (PQ, MNDD), suggesting the two are complementary and an ensemble is the obvious next step. STP stays near zero on this corpus because TABME++ streams are long (median 30 pages); the target use case (personal mail, 5 to 15 docs per stack) should fare much better.
+Pre-alpha. Infrastructure only. The pipeline runs end to end (download a TABME++ slice, evaluate a registered model) but no model meets the 95% STP target yet. Results will be reported here once that bar is met.
 
 ## Approach
 
