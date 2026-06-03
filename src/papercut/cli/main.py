@@ -144,6 +144,35 @@ def _cmd_eval_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_eval_prospective(args: argparse.Namespace) -> int:
+    from papercut.data.loaders.hf import HfPssCorpus
+    from papercut.eval.prospective import Slice, format_results, walk_forward
+
+    corpus_path = Path(args.corpus)
+    if not corpus_path.exists():
+        print(f"Corpus not found: {corpus_path}", file=sys.stderr)
+        return 2
+
+    corpus = HfPssCorpus.load_from_disk(corpus_path)
+    n = args.slices
+    if n < 2:
+        print("--slices must be at least 2", file=sys.stderr)
+        return 2
+    if len(corpus.streams) < n:
+        print(f"Corpus has {len(corpus.streams)} streams but --slices={n}", file=sys.stderr)
+        return 2
+
+    chunk = len(corpus.streams) // n
+    slices = [
+        Slice(name=f"s{i}", streams=corpus.streams[i * chunk : (i + 1) * chunk]) for i in range(n)
+    ]
+    requested = [m.strip() for m in args.models.split(",") if m.strip()]
+    models = [_build_model(name, corpus) for name in requested]
+    results = walk_forward(models, slices)
+    print(format_results(results))
+    return 0
+
+
 def _cmd_eval_prospective_smoke(_: argparse.Namespace) -> int:
     from papercut.eval.prospective import Slice, format_results, walk_forward
     from papercut.models.baselines.trivial import EveryPageNewDoc, NeverSplit
@@ -205,6 +234,17 @@ def _build_parser() -> argparse.ArgumentParser:
     eval_sub.add_parser(
         "prospective-smoke", help="Run a walk-forward demo on synthetic slices."
     ).set_defaults(func=_cmd_eval_prospective_smoke)
+    eval_prospective = eval_sub.add_parser(
+        "prospective", help="Walk-forward evaluation over consecutive corpus slices."
+    )
+    eval_prospective.add_argument("--corpus", required=True, help="Saved HfPssCorpus path.")
+    eval_prospective.add_argument(
+        "--models",
+        required=True,
+        help=f"Comma-separated model names. Choices: {', '.join(MODEL_CHOICES)}.",
+    )
+    eval_prospective.add_argument("--slices", type=int, default=4)
+    eval_prospective.set_defaults(func=_cmd_eval_prospective)
     eval_run = eval_sub.add_parser("run", help="Evaluate a model on a saved HfPssCorpus pickle.")
     eval_run.add_argument("--corpus", required=True, help="Path to a saved HfPssCorpus.")
     eval_run.add_argument("--model", required=True, choices=MODEL_CHOICES)

@@ -30,9 +30,9 @@ class TfIdfXgb:
         self,
         resolver: PageResolver,
         char_ngram_range: tuple[int, int] = (3, 5),
-        max_features: int = 50_000,
-        n_estimators: int = 200,
-        max_depth: int = 6,
+        max_features: int = 20_000,
+        n_estimators: int = 100,
+        max_depth: int = 4,
         learning_rate: float = 0.1,
         random_state: int = 0,
     ) -> None:
