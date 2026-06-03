@@ -83,6 +83,93 @@ def _cmd_data_download_tabme(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_data_filter(args: argparse.Namespace) -> int:
+    """Filter a saved corpus to streams matching length constraints."""
+    from papercut.data.loaders.hf import HfPssCorpus
+
+    src = Path(args.in_path)
+    if not src.exists():
+        print(f"Corpus not found: {src}", file=sys.stderr)
+        return 2
+    corpus = HfPssCorpus.load_from_disk(src)
+    kept_streams = [s for s in corpus.streams if args.min_pages <= len(s) <= args.max_pages]
+    if not kept_streams:
+        print("No streams matched the filter", file=sys.stderr)
+        return 2
+    kept_pages: set[object] = {p for s in kept_streams for p in s.pages}
+    kept_texts = {p: t for p, t in corpus._texts.items() if p in kept_pages}
+    out_corpus = HfPssCorpus(streams=kept_streams, _texts=kept_texts)
+    out_corpus.save(Path(args.out))
+    print(
+        f"Kept {len(kept_streams)} / {len(corpus.streams)} streams "
+        f"({sum(len(s) for s in kept_streams)} pages) -> {args.out}"
+    )
+    return 0
+
+
+def _cmd_data_resample(args: argparse.Namespace) -> int:
+    """Resample new short streams from the unique docs in a corpus.
+
+    Each "doc" is the set of pages sharing the same `PageRef.source` (since
+    our HF adapter encodes `<namespace>/<doc_id>` there). We sample a Poisson
+    number of distinct docs per new stream and concatenate them, yielding
+    shorter streams more representative of personal scan-stacks.
+    """
+    import math
+
+    from papercut.data.loaders.hf import HfPssCorpus
+    from papercut.streams.types import PageRef, Stream
+
+    src = Path(args.in_path)
+    if not src.exists():
+        print(f"Corpus not found: {src}", file=sys.stderr)
+        return 2
+    corpus = HfPssCorpus.load_from_disk(src)
+
+    docs: dict[str, list[PageRef]] = {}
+    for stream in corpus.streams:
+        for page in stream.pages:
+            docs.setdefault(page.source, []).append(page)
+    unique_docs = sorted(docs.keys())
+    if not unique_docs:
+        print("Source corpus has no docs", file=sys.stderr)
+        return 2
+
+    rng = random.Random(args.seed)
+
+    def _poisson(lam: float) -> int:
+        target = math.exp(-lam)
+        k = 0
+        p = 1.0
+        while True:
+            k += 1
+            p *= rng.random()
+            if p < target:
+                return k - 1
+
+    new_streams: list[Stream] = []
+    for _ in range(args.n_streams):
+        n_docs = max(1, min(len(unique_docs), _poisson(args.mean_docs)))
+        chosen = rng.sample(unique_docs, k=n_docs)
+        pages: list[PageRef] = []
+        boundaries: list[bool] = []
+        for doc_id in chosen:
+            doc_pages = sorted(docs[doc_id], key=lambda p: p.page)
+            for i, p in enumerate(doc_pages):
+                pages.append(p)
+                boundaries.append(i == 0)
+        new_streams.append(Stream(pages=tuple(pages), boundaries=tuple(boundaries)))
+
+    out = HfPssCorpus(streams=new_streams, _texts=dict(corpus._texts))
+    out.save(Path(args.out))
+    print(
+        f"Resampled {len(new_streams)} streams "
+        f"(mean_docs={args.mean_docs}, "
+        f"{sum(len(s) for s in new_streams)} pages) -> {args.out}"
+    )
+    return 0
+
+
 def _build_model(name: str, resolver: object) -> object:
     if name == "trivial:every-page":
         from papercut.models.baselines.trivial import EveryPageNewDoc
@@ -259,6 +346,24 @@ def _build_parser() -> argparse.ArgumentParser:
     tabme.add_argument("--max-streams", type=int, default=50)
     tabme.add_argument("--out", default="data/tabme_pp_slice.pkl")
     tabme.set_defaults(func=_cmd_data_download_tabme)
+
+    filt = data_sub.add_parser("filter", help="Filter a saved corpus by per-stream page count.")
+    filt.add_argument("--in", dest="in_path", required=True, help="Source corpus path.")
+    filt.add_argument("--out", required=True, help="Filtered corpus path.")
+    filt.add_argument("--max-pages", type=int, default=10**9)
+    filt.add_argument("--min-pages", type=int, default=1)
+    filt.set_defaults(func=_cmd_data_filter)
+
+    resamp = data_sub.add_parser(
+        "resample-streams",
+        help="Resample new streams from the unique docs in a corpus.",
+    )
+    resamp.add_argument("--in", dest="in_path", required=True)
+    resamp.add_argument("--out", required=True)
+    resamp.add_argument("--n-streams", type=int, default=200)
+    resamp.add_argument("--mean-docs", type=float, default=3.0)
+    resamp.add_argument("--seed", type=int, default=0)
+    resamp.set_defaults(func=_cmd_data_resample)
 
     streams = sub.add_parser("streams", help="Build labeled stream corpora.")
     streams_sub = streams.add_subparsers(dest="streams_command", required=True)
