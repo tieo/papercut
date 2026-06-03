@@ -60,6 +60,7 @@ class TfIdfXgbLayout:
             tree_method="hist",
             random_state=random_state,
         )
+        self._n_estimators = n_estimators
         self._fitted = False
 
     def _truncate(self, text: str) -> str:
@@ -95,7 +96,19 @@ class TfIdfXgbLayout:
             np.float32
         )
 
-        dense = np.hstack([struct_pairs, layout_pairs])
+        n = len(texts)
+        positions = np.arange(1, n, dtype=np.float32)
+        denom = max(1.0, float(n - 1))
+        pos_pairs = np.stack(
+            [
+                positions / denom,
+                (n - 1 - positions) / denom,
+                np.full_like(positions, float(n)),
+            ],
+            axis=1,
+        ).astype(np.float32)
+
+        dense = np.hstack([struct_pairs, layout_pairs, pos_pairs])
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:
@@ -123,6 +136,9 @@ class TfIdfXgbLayout:
             raise ValueError("Need at least one multi-page stream to fit")
         x_train = vstack(blocks).tocsr()
         y_train = np.asarray(labels, dtype=np.int32)
+        n_pos = max(1, int(y_train.sum()))
+        n_neg = max(1, len(y_train) - n_pos)
+        self.model.set_params(scale_pos_weight=n_neg / n_pos)
         self.model.fit(x_train, y_train)
         self._fitted = True
 
