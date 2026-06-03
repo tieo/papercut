@@ -28,8 +28,11 @@ ml = [
 ocr = [
     "paddleocr>=2.7",
     "pytesseract>=0.3.10",
+]
+pdf = [
+    "pypdf>=5.0",
     "pdf2image>=1.17",
-    "pikepdf>=8.0",
+    "reportlab>=4.0",
 ]
 augment = [
     "augraphy>=8.2",
@@ -45,6 +48,8 @@ dev = [
     "ruff>=0.5",
     "pre-commit>=3.7",
     "mypy>=1.10",
+    "pypdf>=5.0",
+    "reportlab>=4.0",
 ]
 
 [build-system]
