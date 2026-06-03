@@ -17,16 +17,23 @@ Pre-alpha. The pipeline runs end to end on real TABME++ data: download a slice w
 
 ### Measured baseline numbers
 
-100 TABME++ test streams (3,103 pages, 80 train / 20 test). page_f1 / PQ / STP / mean-MNDD:
+100 TABME++ test streams (3,103 pages). Single train/test split (80/20):
 
 | Model | page F1 | PQ | STP | MNDD |
 |---|---|---|---|---|
 | trivial:every-page | 0.510 | 0.258 | 0.000 | 19.55 |
 | trivial:never-split | 0.000 | 0.014 | 0.000 | 20.35 |
-| **text-similarity** | **0.688** | **0.492** | **0.050** | **10.40** |
-| tfidf-xgb | 0.612 | 0.485 | 0.000 | 9.90 |
+| **text-similarity** | **0.688** | 0.492 | **0.050** | 10.40 |
+| tfidf-xgb | 0.612 | **0.485** | 0.000 | **9.90** |
 
-text-similarity (char-4-gram Jaccard between consecutive pages, zero training, language-agnostic) is currently the strongest baseline. TF-IDF + XGBoost is competitive on PQ and MNDD but loses on page F1, presumably starved on 80 training streams. STP is the headline target and stays near zero at this corpus size; growing the training slice and adding the multilingual encoder are the next levers.
+Walk-forward prospective eval, 4 consecutive slices (train on s0..s_{i-1}, test on s_i):
+
+| Model | slice | page F1 | PQ | MNDD |
+|---|---|---|---|---|
+| text-similarity | s1 / s2 / s3 | 0.683 / 0.638 / 0.700 | 0.491 / 0.454 / 0.500 | 12.60 / 14.48 / 10.12 |
+| tfidf-xgb       | s1 / s2 / s3 | 0.644 / 0.608 / 0.633 | 0.513 / 0.472 / 0.490 |  10.16 /  10.08 /  9.32 |
+
+text-similarity (char-4-gram Jaccard between consecutive pages, zero training, language-agnostic) consistently wins on page F1. tfidf-xgb consistently wins on document-level metrics (PQ, MNDD), suggesting the two are complementary and an ensemble is the obvious next step. STP stays near zero on this corpus because TABME++ streams are long (median 30 pages); the target use case (personal mail, 5 to 15 docs per stack) should fare much better.
 
 ## Approach
 
