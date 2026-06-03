@@ -2813,13 +2813,16 @@ dependencies = [
 augment = [
     { name = "augraphy" },
 ]
+classical = [
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "xgboost" },
+]
 ml = [
     { name = "datasets" },
-    { name = "scikit-learn" },
     { name = "sentence-transformers" },
     { name = "torch" },
     { name = "transformers" },
-    { name = "xgboost" },
 ]
 ocr = [
     { name = "paddleocr" },
@@ -2843,6 +2846,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "reportlab" },
     { name = "ruff" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+    { name = "xgboost" },
 ]
 
 [package.metadata]
@@ -2856,13 +2862,14 @@ requires-dist = [
     { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=5.0" },
     { name = "pytesseract", marker = "extra == 'ocr'", specifier = ">=0.3.10" },
     { name = "reportlab", marker = "extra == 'pdf'", specifier = ">=4.0" },
-    { name = "scikit-learn", marker = "extra == 'ml'", specifier = ">=1.4" },
+    { name = "scikit-learn", marker = "extra == 'classical'", specifier = ">=1.4" },
+    { name = "scipy", marker = "extra == 'classical'", specifier = ">=1.13" },
     { name = "sentence-transformers", marker = "extra == 'ml'", specifier = ">=3.0" },
     { name = "torch", marker = "extra == 'ml'", specifier = ">=2.3" },
     { name = "transformers", marker = "extra == 'ml'", specifier = ">=4.41" },
-    { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.0" },
+    { name = "xgboost", marker = "extra == 'classical'", specifier = ">=2.0" },
 ]
-provides-extras = ["ml", "ocr", "pdf", "augment", "track"]
+provides-extras = ["classical", "ml", "ocr", "pdf", "augment", "track"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2873,6 +2880,9 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0" },
     { name = "reportlab", specifier = ">=4.0" },
     { name = "ruff", specifier = ">=0.5" },
+    { name = "scikit-learn", specifier = ">=1.4" },
+    { name = "scipy", specifier = ">=1.13" },
+    { name = "xgboost", specifier = ">=2.0" },
 ]
 
 [[package]]

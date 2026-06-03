@@ -17,12 +17,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+classical = [
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+    "scipy>=1.13",
+]
 ml = [
     "torch>=2.3",
     "transformers>=4.41",
     "datasets>=2.19",
-    "scikit-learn>=1.4",
-    "xgboost>=2.0",
     "sentence-transformers>=3.0",
 ]
 ocr = [
@@ -50,6 +53,9 @@ dev = [
     "mypy>=1.10",
     "pypdf>=5.0",
     "reportlab>=4.0",
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+    "scipy>=1.13",
 ]
 
 [build-system]
