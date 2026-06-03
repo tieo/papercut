@@ -29,13 +29,18 @@ def parse_folders_file(path: Path) -> dict[int, list[str]]:
     return streams
 
 
+_TEXT_KEYS = ("Word", "text", "content")
+
+
 def extract_text_from_ocr(ocr_payload: str) -> str:
     """Pull a flat text string out of TABME++'s per-page OCR JSON.
 
-    TABME++ stores each page's OCR as a JSON-encoded blob (Microsoft Azure
-    Read API in modern releases). We walk the structure collecting every
-    `text` field, which handles the Read API's nested
-    analyzeResult/readResults/lines hierarchy as well as flatter variants.
+    Empirically TABME++ wraps its per-line OCR as
+    `{"lines_data": [{"Word": "<segment>", ...}, ...]}`, where each entry's
+    `Word` field is actually a multi-word text segment (the field name is
+    Roots Automation's, not ours). For robustness against other OCR shapes
+    (Microsoft Azure Read API uses `text`, some custom formats use
+    `content`) we walk recursively and collect any of those known keys.
     """
     if not ocr_payload:
         return ""
@@ -48,9 +53,10 @@ def extract_text_from_ocr(ocr_payload: str) -> str:
 
     def _walk(obj: Any) -> None:
         if isinstance(obj, Mapping):
-            text = obj.get("text")
-            if isinstance(text, str):
-                parts.append(text)
+            for key in _TEXT_KEYS:
+                value = obj.get(key)
+                if isinstance(value, str):
+                    parts.append(value)
             for v in obj.values():
                 _walk(v)
         elif isinstance(obj, list):

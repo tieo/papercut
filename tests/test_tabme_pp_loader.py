@@ -50,6 +50,19 @@ def test_extract_text_from_flat_lines() -> None:
     assert extract_text_from_ocr(payload) == "alpha beta"
 
 
+def test_extract_text_from_tabme_pp_native_shape() -> None:
+    """Empirical TABME++ shape: lines_data with Word per segment."""
+    payload = json.dumps(
+        {
+            "lines_data": [
+                {"Word": "TABLE 4", "Confidence": 0.99, "page": 0},
+                {"Word": "CIGARETTES WITHOUT COUMARIN", "Confidence": 0.99, "page": 0},
+            ]
+        }
+    )
+    assert extract_text_from_ocr(payload) == "TABLE 4 CIGARETTES WITHOUT COUMARIN"
+
+
 def test_extract_text_empty_and_invalid() -> None:
     assert extract_text_from_ocr("") == ""
     assert extract_text_from_ocr("not json") == "not json"
