@@ -13,7 +13,7 @@ Page Stream Segmentation for [paperless-ngx](https://github.com/paperless-ngx/pa
 
 ## Status
 
-Pre-alpha. The evaluation harness, three baselines (two trivial plus a trainable TF-IDF + XGBoost), prospective walk-forward eval, stream construction from PDFs, and a registry of 11 multilingual data sources all work end to end. No real-data model trained yet.
+Pre-alpha. The pipeline runs end to end on real TABME++ data: download a slice with `papercut data download`, evaluate any registered model with `papercut eval run`. Four baselines so far (two trivial, one zero-shot text-similarity, one trainable TF-IDF + XGBoost). Bigger models (DiT, LayoutXLM, multilingual MiniLM) and OCR-on-scan integration are next.
 
 ## Approach
 
@@ -30,7 +30,7 @@ Evaluation is **prospective**: train on a frozen snapshot, evaluate on data coll
 ```
 src/papercut/
 ├── cli/         # `papercut` command-line entry point
-├── data/        # dataset registry and per-source downloaders
+├── data/        # dataset registry, per-source downloaders, HF adapter
 ├── ocr/         # unified OCR interface (planned: PaddleOCR primary, Tesseract fallback)
 ├── streams/     # PDF concatenation, boundary labeling, PageResolver, scan augmentation
 ├── models/      # one module per architecture, all implementing models.base.Model
@@ -38,13 +38,16 @@ src/papercut/
 └── serve/       # paperless-ngx integration (planned: consume-folder watcher and pre-consume hook)
 ```
 
-## Dev quickstart
+## Quickstart
 
 ```bash
 uv sync --dev
 uv run pytest
-uv run papercut sources list
-uv run papercut eval baseline-smoke
+
+# Pull a tiny TABME++ slice and run all baselines on it.
+uv run papercut data download tabme-pp --split test --max-streams 5 --out data/tabme_pp_5.pkl
+uv run papercut eval run --corpus data/tabme_pp_5.pkl --model text-similarity
+uv run papercut eval run --corpus data/tabme_pp_5.pkl --model tfidf-xgb
 ```
 
 On **NixOS**, wrap calls in `nix-shell` so binary wheels (numpy, scipy, sklearn, xgboost, future torch) can load:
@@ -60,10 +63,15 @@ Data lives in `./data/` (gitignored).
 
 ```
 papercut sources list
+papercut data download tabme-pp [--split SPLIT] [--max-streams N] [--out PATH]
 papercut streams build <pdf-dir> <out-dir> [--n-streams 100] [--mean-docs 10]
+papercut eval run --corpus PATH --model MODEL [--train-frac 0.8]
 papercut eval baseline-smoke
 papercut eval prospective-smoke
 ```
+
+Models registered for `papercut eval run --model`:
+`trivial:every-page`, `trivial:never-split`, `text-similarity`, `tfidf-xgb`.
 
 ## Registered sources
 
