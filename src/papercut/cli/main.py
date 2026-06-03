@@ -215,6 +215,22 @@ def _build_model(name: str, resolver: object) -> object:
             submodel=TfIdfXgb(resolver=resolver),  # type: ignore[arg-type]
             name="viterbi:tfidf-xgb",
         )
+    if name == "tfidf-xgb-rich":
+        from papercut.models.baselines.tfidf_xgb_rich import TfIdfXgbRich
+
+        return TfIdfXgbRich(resolver=resolver)  # type: ignore[arg-type]
+    if name == "ensemble:text-sim+tfidf-xgb-rich":
+        from papercut.models.baselines.text_similarity import TextSimilarityBaseline
+        from papercut.models.baselines.tfidf_xgb_rich import TfIdfXgbRich
+        from papercut.models.ensembles.late import LateEnsemble
+
+        return LateEnsemble(
+            submodels=[
+                TextSimilarityBaseline(resolver=resolver),  # type: ignore[arg-type]
+                TfIdfXgbRich(resolver=resolver),  # type: ignore[arg-type]
+            ],
+            name="ensemble:text-sim+tfidf-xgb-rich",
+        )
     if name == "viterbi:ensemble":
         from papercut.models.baselines.text_similarity import TextSimilarityBaseline
         from papercut.models.baselines.tfidf_xgb import TfIdfXgb
@@ -238,7 +254,9 @@ MODEL_CHOICES = (
     "trivial:never-split",
     "text-similarity",
     "tfidf-xgb",
+    "tfidf-xgb-rich",
     "ensemble:text-sim+tfidf-xgb",
+    "ensemble:text-sim+tfidf-xgb-rich",
     "viterbi:text-similarity",
     "viterbi:tfidf-xgb",
     "viterbi:ensemble",
