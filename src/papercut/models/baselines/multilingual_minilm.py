@@ -53,7 +53,12 @@ class MultilingualMiniLM:
         st_model = SentenceTransformer(model_name)
 
         def encode(texts: list[str]) -> np.ndarray:
-            arr = st_model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+            arr = st_model.encode(
+                texts,
+                convert_to_numpy=True,
+                show_progress_bar=False,
+                batch_size=16,
+            )
             return np.asarray(arr, dtype=np.float32)
 
         return encode

@@ -80,7 +80,12 @@ class MiniLMXgb:
         st = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
         def encode(texts: list[str]) -> np.ndarray:
-            arr = st.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+            arr = st.encode(
+                texts,
+                convert_to_numpy=True,
+                show_progress_bar=False,
+                batch_size=16,
+            )
             return np.asarray(arr, dtype=np.float32)
 
         return encode
