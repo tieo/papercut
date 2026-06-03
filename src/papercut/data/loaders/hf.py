@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from papercut.streams.resolver import PageResolver
@@ -47,6 +48,28 @@ class HfPssCorpus:
         if page not in self._texts:
             raise KeyError(f"No text for {page}; corpus may be image-only")
         return self._texts[page]
+
+    def save(self, path: str | Path) -> None:
+        """Pickle the corpus to disk for reuse.
+
+        Streams plus text cache; format is internal and unstable. Use this for
+        caching a downloaded slice across dev sessions, not for sharing.
+        """
+        import pickle
+
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("wb") as f:
+            pickle.dump({"streams": self.streams, "texts": self._texts}, f)
+
+    @classmethod
+    def load_from_disk(cls, path: str | Path) -> HfPssCorpus:
+        """Inverse of `save`."""
+        import pickle
+
+        with Path(path).open("rb") as f:
+            state = pickle.load(f)
+        return cls(streams=state["streams"], _texts=state["texts"])
 
 
 def _row_to_stream(

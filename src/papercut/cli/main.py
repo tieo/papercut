@@ -69,6 +69,20 @@ def _cmd_eval_baseline_smoke(_: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_data_download_tabme(args: argparse.Namespace) -> int:
+    from papercut.data.loaders import tabme_pp
+
+    out_path = Path(args.out)
+    print(f"Downloading TABME++ {args.split} slice (max_streams={args.max_streams}) -> {out_path}")
+    corpus = tabme_pp.load(split=args.split, max_streams=args.max_streams)
+    corpus.save(out_path)
+    print(
+        f"Saved {len(corpus.streams)} streams "
+        f"({sum(len(s) for s in corpus.streams)} pages) to {out_path}"
+    )
+    return 0
+
+
 def _cmd_eval_prospective_smoke(_: argparse.Namespace) -> int:
     from papercut.eval.prospective import Slice, format_results, walk_forward
     from papercut.models.baselines.trivial import EveryPageNewDoc, NeverSplit
@@ -99,6 +113,16 @@ def _build_parser() -> argparse.ArgumentParser:
     sources_sub.add_parser("list", help="List all registered sources.").set_defaults(
         func=_cmd_sources_list
     )
+
+    data = sub.add_parser("data", help="Download and cache external datasets.")
+    data_sub = data.add_subparsers(dest="data_command", required=True)
+    download = data_sub.add_parser("download", help="Download a registered source slice.")
+    download_sub = download.add_subparsers(dest="download_source", required=True)
+    tabme = download_sub.add_parser("tabme-pp", help="Pull a TABME++ slice from HuggingFace.")
+    tabme.add_argument("--split", choices=["train", "val", "test"], default="test")
+    tabme.add_argument("--max-streams", type=int, default=50)
+    tabme.add_argument("--out", default="data/tabme_pp_slice.pkl")
+    tabme.set_defaults(func=_cmd_data_download_tabme)
 
     streams = sub.add_parser("streams", help="Build labeled stream corpora.")
     streams_sub = streams.add_subparsers(dest="streams_command", required=True)
