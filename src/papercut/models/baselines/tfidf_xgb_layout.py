@@ -13,6 +13,44 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from papercut.models.baselines.tfidf_xgb_rich import _page_features
 from papercut.streams.types import Stream
 
+
+def _char_ngrams(text: str, n: int) -> set[str]:
+    text = text.strip()
+    if len(text) < n:
+        return {text} if text else set()
+    return {text[i : i + n] for i in range(len(text) - n + 1)}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a and not b:
+        return 1.0
+    union = a | b
+    if not union:
+        return 1.0
+    return len(a & b) / len(union)
+
+
+def _cross_page_features(prev: str, curr: str, head: int = 200, foot: int = 200) -> list[float]:
+    """Five language-agnostic similarity signals between consecutive pages.
+
+    Head and tail similarity catch shared letterheads and footers (strong
+    same-doc cue). Full-text Jaccard catches body-text overlap. Length
+    asymmetry catches the cover-page / continuation-page contrast.
+    """
+    prev_head = prev[:head]
+    curr_head = curr[:head]
+    prev_foot = prev[-foot:]
+    curr_foot = curr[-foot:]
+    head_sim = _jaccard(_char_ngrams(prev_head, 4), _char_ngrams(curr_head, 4))
+    foot_sim = _jaccard(_char_ngrams(prev_foot, 4), _char_ngrams(curr_foot, 4))
+    full_sim = _jaccard(_char_ngrams(prev, 4), _char_ngrams(curr, 4))
+    prev_len = max(1, len(prev))
+    curr_len = max(1, len(curr))
+    len_ratio = min(prev_len, curr_len) / max(prev_len, curr_len)
+    log_len_diff = abs(np.log1p(prev_len) - np.log1p(curr_len))
+    return [head_sim, foot_sim, full_sim, len_ratio, float(log_len_diff)]
+
+
 if TYPE_CHECKING:
     from papercut.data.loaders.hf import HfPssCorpus
 
@@ -108,7 +146,12 @@ class TfIdfXgbLayout:
             axis=1,
         ).astype(np.float32)
 
-        dense = np.hstack([struct_pairs, layout_pairs, pos_pairs])
+        cross = np.asarray(
+            [_cross_page_features(texts[i - 1], texts[i]) for i in range(1, n)],
+            dtype=np.float32,
+        )
+
+        dense = np.hstack([struct_pairs, layout_pairs, pos_pairs, cross])
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:
