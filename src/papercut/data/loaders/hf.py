@@ -129,9 +129,7 @@ def load_hf_pss(
     try:
         from datasets import load_dataset
     except ImportError as e:
-        raise ImportError(
-            "HF dataset loading needs the 'hf' extra: `uv sync --extra hf`"
-        ) from e
+        raise ImportError("HF dataset loading needs the 'hf' extra: `uv sync --extra hf`") from e
 
     namespace = source_namespace or repo_id.split("/")[-1]
     rows: Iterable[Mapping[str, Any]] = load_dataset(repo_id, split=split, streaming=streaming)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from papercut.data.loaders.hf import (
-    HfPssCorpus,
     HfPssSchema,
     assert_resolver_protocol,
     corpus_from_rows,
