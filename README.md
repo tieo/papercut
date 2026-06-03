@@ -15,6 +15,19 @@ Page Stream Segmentation for [paperless-ngx](https://github.com/paperless-ngx/pa
 
 Pre-alpha. The pipeline runs end to end on real TABME++ data: download a slice with `papercut data download`, evaluate any registered model with `papercut eval run`. Four baselines so far (two trivial, one zero-shot text-similarity, one trainable TF-IDF + XGBoost). Bigger models (DiT, LayoutXLM, multilingual MiniLM) and OCR-on-scan integration are next.
 
+### Measured baseline numbers
+
+100 TABME++ test streams (3,103 pages, 80 train / 20 test). page_f1 / PQ / STP / mean-MNDD:
+
+| Model | page F1 | PQ | STP | MNDD |
+|---|---|---|---|---|
+| trivial:every-page | 0.510 | 0.258 | 0.000 | 19.55 |
+| trivial:never-split | 0.000 | 0.014 | 0.000 | 20.35 |
+| **text-similarity** | **0.688** | **0.492** | **0.050** | **10.40** |
+| tfidf-xgb | 0.612 | 0.485 | 0.000 | 9.90 |
+
+text-similarity (char-4-gram Jaccard between consecutive pages, zero training, language-agnostic) is currently the strongest baseline. TF-IDF + XGBoost is competitive on PQ and MNDD but loses on page F1, presumably starved on 80 training streams. STP is the headline target and stays near zero at this corpus size; growing the training slice and adding the multilingual encoder are the next levers.
+
 ## Approach
 
 The field is **Page Stream Segmentation (PSS)**. The current SOTA on the public TABME++ benchmark is around 80% STP using a fine-tuned 7B LLM, which is impressive but not CPU-friendly. For our constraints we follow the cheaper, language-agnostic direction:
