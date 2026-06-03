@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from papercut.models.base import ProbabilisticModel, TrainableModel
+from papercut.models.base import ProbabilisticModel
 from papercut.streams.types import Stream
 
 
@@ -36,8 +36,8 @@ class LateEnsemble:
     def fit(self, streams: list[Stream]) -> None:
         """Fit any trainable submodel; non-trainable submodels are skipped."""
         for sm in self.submodels:
-            if isinstance(sm, TrainableModel):
-                sm.fit(streams)
+            if callable(getattr(sm, "fit", None)):
+                sm.fit(streams)  # type: ignore[attr-defined]
 
     def predict_probs(self, stream: Stream) -> tuple[float, ...]:
         assert self.weights is not None
