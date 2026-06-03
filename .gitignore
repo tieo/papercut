@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Experiment tracking
+mlruns/
+.mlruns/
+
+# Data (large, regeneratable)
+data/**
+!data/.gitkeep
+
+# Models (large, regeneratable)
+checkpoints/
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
