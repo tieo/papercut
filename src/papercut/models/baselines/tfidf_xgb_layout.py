@@ -52,30 +52,37 @@ def _digit_run_count(text: str) -> int:
 def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300) -> list[float]:
     """Language-agnostic similarity signals between consecutive pages.
 
-    Head and tail similarity catch shared letterheads and footers (strong
-    same-doc cue). Full-text Jaccard catches body-text overlap. Length
-    asymmetry catches the cover-page / continuation-page contrast. The
-    extra-narrow head/foot windows (50 chars) emphasise the very-top and
-    very-bottom layout regions; digit-run counts in the footer approximate
-    page-number presence without depending on a specific language pattern.
+    Multi-scale head and tail similarity catches shared letterheads and
+    footers at varying window widths (strong same-doc cue). Full-text
+    Jaccard catches body-text overlap. Length asymmetry catches the
+    cover-page / continuation-page contrast. Digit-run counts in the footer
+    approximate page-number presence without depending on a specific
+    language pattern.
     """
-    prev_head = prev[:head]
-    curr_head = curr[:head]
-    prev_foot = prev[-foot:]
-    curr_foot = curr[-foot:]
-    prev_top = prev[:50]
-    curr_top = curr[:50]
-    prev_bot = prev[-50:]
-    curr_bot = curr[-50:]
 
-    head_sim = _jaccard(_char_ngrams(prev_head, 4), _char_ngrams(curr_head, 4))
-    foot_sim = _jaccard(_char_ngrams(prev_foot, 4), _char_ngrams(curr_foot, 4))
+    def head_chars(text: str, n: int) -> str:
+        return text[:n]
+
+    def foot_chars(text: str, n: int) -> str:
+        return text[-n:]
+
+    # Multi-scale head and foot Jaccard
+    multi_head: list[float] = []
+    multi_foot: list[float] = []
+    for window in (50, 150, 300, 600):
+        ph = head_chars(prev, window)
+        ch = head_chars(curr, window)
+        pf = foot_chars(prev, window)
+        cf = foot_chars(curr, window)
+        multi_head.append(_jaccard(_char_ngrams(ph, 4), _char_ngrams(ch, 4)))
+        multi_foot.append(_jaccard(_char_ngrams(pf, 4), _char_ngrams(cf, 4)))
+
     full_sim = _jaccard(_char_ngrams(prev, 4), _char_ngrams(curr, 4))
-    top_sim = _jaccard(_char_ngrams(prev_top, 3), _char_ngrams(curr_top, 3))
-    bot_sim = _jaccard(_char_ngrams(prev_bot, 3), _char_ngrams(curr_bot, 3))
+    top_sim = _jaccard(_char_ngrams(prev[:50], 3), _char_ngrams(curr[:50], 3))
+    bot_sim = _jaccard(_char_ngrams(prev[-50:], 3), _char_ngrams(curr[-50:], 3))
 
-    prev_words = set(prev_head.lower().split())
-    curr_words = set(curr_head.lower().split())
+    prev_words = set(prev[:head].lower().split())
+    curr_words = set(curr[:head].lower().split())
     head_word_sim = _jaccard(prev_words, curr_words)
 
     prev_len = max(1, len(prev))
@@ -83,12 +90,12 @@ def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300)
     len_ratio = min(prev_len, curr_len) / max(prev_len, curr_len)
     log_len_diff = abs(np.log1p(prev_len) - np.log1p(curr_len))
 
-    prev_digits = _digit_run_count(prev_foot)
-    curr_digits = _digit_run_count(curr_foot)
+    prev_digits = _digit_run_count(foot_chars(prev, foot))
+    curr_digits = _digit_run_count(foot_chars(curr, foot))
 
     return [
-        head_sim,
-        foot_sim,
+        *multi_head,
+        *multi_foot,
         full_sim,
         top_sim,
         bot_sim,
@@ -186,6 +193,12 @@ class TfIdfXgbLayout:
             np.float32
         )
 
+        prev_l_norm = np.linalg.norm(prev_l, axis=1, keepdims=True) + 1e-9
+        curr_l_norm = np.linalg.norm(curr_l, axis=1, keepdims=True) + 1e-9
+        layout_cos = (
+            np.sum(prev_l * curr_l, axis=1, keepdims=True) / (prev_l_norm * curr_l_norm)
+        ).astype(np.float32)
+
         n = len(texts)
         positions = np.arange(1, n, dtype=np.float32)
         denom = max(1.0, float(n - 1))
@@ -203,7 +216,7 @@ class TfIdfXgbLayout:
             dtype=np.float32,
         )
 
-        dense = np.hstack([struct_pairs, layout_pairs, pos_pairs, cross])
+        dense = np.hstack([struct_pairs, layout_pairs, layout_cos, pos_pairs, cross])
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:
