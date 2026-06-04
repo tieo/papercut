@@ -128,10 +128,12 @@ class TfIdfXgbLayout:
         max_depth: int = 5,
         learning_rate: float = 0.1,
         max_chars_per_page: int = 4000,
+        threshold: float = 0.5,
         random_state: int = 0,
     ) -> None:
         self.corpus = corpus
         self.max_chars_per_page = max_chars_per_page
+        self.threshold = threshold
         self.vectorizer = TfidfVectorizer(
             analyzer="word",
             ngram_range=ngram_range,
@@ -244,7 +246,7 @@ class TfIdfXgbLayout:
 
     def predict_boundaries(self, stream: Stream) -> tuple[bool, ...]:
         probs = self.predict_probs(stream)
-        return (True, *(p > 0.5 for p in probs[1:]))
+        return (True, *(p > self.threshold for p in probs[1:]))
 
     def save(self, path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)

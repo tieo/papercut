@@ -250,7 +250,7 @@ def _cmd_data_fair_split(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_model(name: str, resolver: object) -> object:
+def _build_model(name: str, resolver: object, threshold: float = 0.5) -> object:
     if name == "trivial:every-page":
         from papercut.models.baselines.trivial import EveryPageNewDoc
 
@@ -334,7 +334,7 @@ def _build_model(name: str, resolver: object) -> object:
     if name == "tfidf-xgb-layout":
         from papercut.models.baselines.tfidf_xgb_layout import TfIdfXgbLayout
 
-        return TfIdfXgbLayout(corpus=resolver)  # type: ignore[arg-type]
+        return TfIdfXgbLayout(corpus=resolver, threshold=threshold)  # type: ignore[arg-type]
     if name == "ensemble:text-sim+tfidf-xgb-layout":
         from papercut.models.baselines.text_similarity import TextSimilarityBaseline
         from papercut.models.baselines.tfidf_xgb_layout import TfIdfXgbLayout
@@ -417,7 +417,7 @@ def _cmd_eval_run(args: argparse.Namespace) -> int:
             return 2
         resolver_corpus = corpus
 
-    model = _build_model(args.model, resolver_corpus)
+    model = _build_model(args.model, resolver_corpus, threshold=args.threshold)
     if callable(getattr(model, "fit", None)):
         print(f"Fitting {args.model} on {len(train)} streams...")
         model.fit(train)  # type: ignore[attr-defined]
@@ -569,6 +569,12 @@ def _build_parser() -> argparse.ArgumentParser:
     eval_run.add_argument("--corpus", required=True, help="Path to a saved HfPssCorpus.")
     eval_run.add_argument("--model", required=True, choices=MODEL_CHOICES)
     eval_run.add_argument("--train-frac", type=float, default=0.8)
+    eval_run.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Boundary decision threshold (where supported by the model).",
+    )
     eval_run.add_argument(
         "--test-corpus",
         default=None,
