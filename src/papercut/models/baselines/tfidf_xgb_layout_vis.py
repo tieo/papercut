@@ -63,16 +63,56 @@ class TfIdfXgbAll(TfIdfXgbLayoutSem):
         super().__init__(corpus=corpus, **kwargs)
         if not corpus.has_visuals():
             raise ValueError("TfIdfXgbAll needs a corpus with visual features.")
-        self._stream_visuals: dict[int, np.ndarray] = {}
+        self._current_visual: np.ndarray | None = None
 
-    def _gather(self, stream: Stream) -> tuple[list[str], np.ndarray]:
-        texts, layouts = super()._gather(stream)
-        vis = np.asarray(
+    def _gather_visuals(self, stream: Stream) -> np.ndarray:
+        return np.asarray(
             [self.corpus.visual(p) for p in stream.pages],
             dtype=np.float32,
         )
-        self._stream_visuals[id(stream)] = vis
-        return texts, layouts
+
+    def fit(self, streams):  # type: ignore[override]
+        from scipy.sparse import vstack
+
+        all_truncated: list[str] = []
+        gathered: list[tuple[list[str], np.ndarray, np.ndarray]] = []
+        for stream in streams:
+            if stream.boundaries is None:
+                raise ValueError("Cannot fit on unlabeled stream")
+            texts, layouts = self._gather(stream)
+            visuals = self._gather_visuals(stream)
+            gathered.append((texts, layouts, visuals))
+            all_truncated.extend(self._truncate(t) for t in texts)
+        if not all_truncated:
+            raise ValueError("No texts available")
+        self.vectorizer.fit(all_truncated)
+
+        blocks: list[csr_matrix] = []
+        labels: list[int] = []
+        for stream, (texts, layouts, visuals) in zip(streams, gathered, strict=True):
+            assert stream.boundaries is not None
+            if len(texts) < 2:
+                continue
+            self._current_visual = visuals
+            blocks.append(self._build_features(texts, layouts))
+            labels.extend(1 if b else 0 for b in stream.boundaries[1:])
+        if not blocks:
+            raise ValueError("Need at least one multi-page stream to fit")
+        x_train = vstack(blocks).tocsr()
+        y_train = np.asarray(labels, dtype=np.int32)
+        self.model.fit(x_train, y_train)
+        self._fitted = True
+
+    def predict_probs(self, stream):  # type: ignore[override]
+        if not self._fitted:
+            raise RuntimeError("TfIdfXgbAll must be fit before predict_probs")
+        texts, layouts = self._gather(stream)
+        if len(texts) < 2:
+            return (1.0,)
+        self._current_visual = self._gather_visuals(stream)
+        features = self._build_features(texts, layouts)
+        proba = self.model.predict_proba(features)[:, 1].tolist()
+        return (1.0, *proba)
 
     def _build_features(self, texts: list[str], layouts: np.ndarray) -> csr_matrix:
         truncated = [self._truncate(t) for t in texts]
@@ -115,9 +155,11 @@ class TfIdfXgbAll(TfIdfXgbLayoutSem):
         embeds = embeds / norms
         cos = np.sum(embeds[:-1] * embeds[1:], axis=1, dtype=np.float32).reshape(-1, 1)
 
-        # Vision features computed externally (need the stream pages, not just
-        # texts). We stash them during _gather and look up the most recent.
-        vis = next(reversed(self._stream_visuals.values()))
+        # Vision pair block. _current_visual is stashed by _gather just
+        # before this is called; both have one row per page in the stream.
+        if self._current_visual is None or len(self._current_visual) != n:
+            raise RuntimeError("Visual feature buffer not populated; _gather not called")
+        vis = self._current_visual
         prev_v = vis[:-1]
         curr_v = vis[1:]
         vis_pairs = np.hstack([prev_v, curr_v, prev_v - curr_v, np.abs(prev_v - curr_v)]).astype(
@@ -125,5 +167,4 @@ class TfIdfXgbAll(TfIdfXgbLayoutSem):
         )
 
         dense = np.hstack([struct_pairs, layout_pairs, pos_pairs, cross, cos, vis_pairs])
-        self._stream_visuals.clear()
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
