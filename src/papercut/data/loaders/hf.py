@@ -44,6 +44,7 @@ class HfPssCorpus:
     streams: list[Stream]
     _texts: dict[PageRef, str] = field(default_factory=dict)
     _layouts: dict[PageRef, list[float]] = field(default_factory=dict)
+    _visuals: dict[PageRef, list[float]] = field(default_factory=dict)
 
     def text(self, page: PageRef) -> str:
         if page not in self._texts:
@@ -55,8 +56,16 @@ class HfPssCorpus:
             raise KeyError(f"No layout for {page}; corpus has no layout features")
         return self._layouts[page]
 
+    def visual(self, page: PageRef) -> list[float]:
+        if page not in self._visuals:
+            raise KeyError(f"No visual for {page}; corpus has no visual features")
+        return self._visuals[page]
+
     def has_layouts(self) -> bool:
         return bool(self._layouts)
+
+    def has_visuals(self) -> bool:
+        return bool(self._visuals)
 
     def save(self, path: str | Path) -> None:
         """Pickle the corpus to disk for reuse.
@@ -75,6 +84,7 @@ class HfPssCorpus:
                     "streams": self.streams,
                     "texts": self._texts,
                     "layouts": self._layouts,
+                    "visuals": self._visuals,
                 },
                 f,
             )
@@ -90,6 +100,7 @@ class HfPssCorpus:
             streams=state["streams"],
             _texts=state["texts"],
             _layouts=state.get("layouts", {}),
+            _visuals=state.get("visuals", {}),
         )
 
 

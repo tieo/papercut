@@ -9,6 +9,70 @@ from papercut.data.loaders.hf import HfPssCorpus
 from papercut.streams.types import PageRef, Stream
 
 TABME_REPO_ID = "rootsautomation/TABMEpp"
+VISION_FEATURE_NAMES = (
+    "aspect_ratio",
+    "mean_intensity",
+    "std_intensity",
+    "edge_density",
+    "intensity_top",
+    "intensity_bottom",
+    "intensity_left",
+    "intensity_right",
+    "intensity_q11",
+    "intensity_q12",
+    "intensity_q13",
+    "intensity_q21",
+    "intensity_q22",
+    "intensity_q23",
+    "intensity_q31",
+    "intensity_q32",
+    "intensity_q33",
+)
+
+
+def extract_visual_from_img(img_bytes: bytes | None) -> list[float]:
+    """Cheap per-page visual statistics from raw image bytes.
+
+    Decodes the page, converts to grayscale, resizes to 96x96, and computes
+    aspect ratio, mean and std intensity, a Sobel-like edge density proxy,
+    plus mean intensity in 4 horizontal halves and a 3x3 spatial grid. The
+    grid intensities capture letterhead, address-block, and signature-block
+    presence at coarse resolution without pulling in a CNN.
+    """
+    n = len(VISION_FEATURE_NAMES)
+    if not img_bytes:
+        return [0.0] * n
+    try:
+        import io
+
+        import numpy as np
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(img_bytes)).convert("L")
+        w, h = img.size
+        aspect = float(w) / max(1, h)
+        small = img.resize((96, 96), Image.BILINEAR)
+        arr = np.asarray(small, dtype=np.float32) / 255.0
+        mean_i = float(arr.mean())
+        std_i = float(arr.std())
+        # Edge density: mean of absolute gradient
+        gy = np.abs(arr[1:, :] - arr[:-1, :]).mean()
+        gx = np.abs(arr[:, 1:] - arr[:, :-1]).mean()
+        edge = float((gx + gy) / 2.0)
+        # Horizontal halves and vertical halves
+        top = float(arr[:48, :].mean())
+        bot = float(arr[48:, :].mean())
+        left = float(arr[:, :48].mean())
+        right = float(arr[:, 48:].mean())
+        # 3x3 grid
+        grid: list[float] = []
+        for i in range(3):
+            for j in range(3):
+                cell = arr[i * 32 : (i + 1) * 32, j * 32 : (j + 1) * 32]
+                grid.append(float(cell.mean()))
+        return [aspect, mean_i, std_i, edge, top, bot, left, right, *grid]
+    except Exception:
+        return [0.0] * n
 
 
 def parse_folders_file(path: Path) -> dict[int, list[str]]:
@@ -171,6 +235,7 @@ def build_corpus(
 
     pages_by_doc_text: dict[str, dict[int, str]] = {}
     pages_by_doc_layout: dict[str, dict[int, list[float]]] = {}
+    pages_by_doc_visual: dict[str, dict[int, list[float]]] = {}
     for row in page_rows:
         doc_id = str(row["doc_id"])
         if doc_id not in needed_docs:
@@ -180,27 +245,34 @@ def build_corpus(
         pages_by_doc_layout.setdefault(doc_id, {})[int(row["pg_id"])] = extract_layout_from_ocr(
             ocr_str
         )
+        img_bytes = row.get("img")
+        pages_by_doc_visual.setdefault(doc_id, {})[int(row["pg_id"])] = extract_visual_from_img(
+            img_bytes
+        )
 
     streams: list[Stream] = []
     texts: dict[PageRef, str] = {}
     layouts: dict[PageRef, list[float]] = {}
+    visuals: dict[PageRef, list[float]] = {}
     for sid in selected_ids:
         page_refs: list[PageRef] = []
         boundaries: list[bool] = []
         for doc_id in stream_defs[sid]:
             doc_pages = pages_by_doc_text.get(doc_id, {})
             doc_layouts = pages_by_doc_layout.get(doc_id, {})
+            doc_visuals = pages_by_doc_visual.get(doc_id, {})
             for pg_id, text in sorted(doc_pages.items()):
                 ref = PageRef(source=f"tabme_pp/{doc_id}", page=pg_id)
                 page_refs.append(ref)
                 boundaries.append(pg_id == 0)
                 texts[ref] = text
                 layouts[ref] = doc_layouts.get(pg_id, [0.0] * len(LAYOUT_FEATURE_NAMES))
+                visuals[ref] = doc_visuals.get(pg_id, [0.0] * len(VISION_FEATURE_NAMES))
         if page_refs:
             streams.append(Stream(pages=tuple(page_refs), boundaries=tuple(boundaries)))
     if not streams:
         raise ValueError("No streams built; check that page rows cover the needed docs")
-    return HfPssCorpus(streams=streams, _texts=texts, _layouts=layouts)
+    return HfPssCorpus(streams=streams, _texts=texts, _layouts=layouts, _visuals=visuals)
 
 
 def load(split: str = "train", max_streams: int | None = None) -> HfPssCorpus:

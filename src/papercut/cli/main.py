@@ -99,7 +99,10 @@ def _cmd_data_filter(args: argparse.Namespace) -> int:
     kept_pages: set[object] = {p for s in kept_streams for p in s.pages}
     kept_texts = {p: t for p, t in corpus._texts.items() if p in kept_pages}
     kept_layouts = {p: layout for p, layout in corpus._layouts.items() if p in kept_pages}
-    out_corpus = HfPssCorpus(streams=kept_streams, _texts=kept_texts, _layouts=kept_layouts)
+    kept_visuals = {p: vis for p, vis in corpus._visuals.items() if p in kept_pages}
+    out_corpus = HfPssCorpus(
+        streams=kept_streams, _texts=kept_texts, _layouts=kept_layouts, _visuals=kept_visuals
+    )
     out_corpus.save(Path(args.out))
     print(
         f"Kept {len(kept_streams)} / {len(corpus.streams)} streams "
@@ -165,6 +168,7 @@ def _cmd_data_resample(args: argparse.Namespace) -> int:
         streams=new_streams,
         _texts=dict(corpus._texts),
         _layouts=dict(corpus._layouts),
+        _visuals=dict(corpus._visuals),
     )
     out.save(Path(args.out))
     print(
@@ -237,8 +241,13 @@ def _cmd_data_fair_split(args: argparse.Namespace) -> int:
 
     texts = dict(corpus._texts)
     layouts = dict(corpus._layouts)
-    HfPssCorpus(streams=train_streams, _texts=texts, _layouts=layouts).save(Path(args.train_out))
-    HfPssCorpus(streams=test_streams, _texts=texts, _layouts=layouts).save(Path(args.test_out))
+    visuals = dict(corpus._visuals)
+    HfPssCorpus(streams=train_streams, _texts=texts, _layouts=layouts, _visuals=visuals).save(
+        Path(args.train_out)
+    )
+    HfPssCorpus(streams=test_streams, _texts=texts, _layouts=layouts, _visuals=visuals).save(
+        Path(args.test_out)
+    )
     print(
         f"Train: {len(train_streams)} streams "
         f"({sum(len(s) for s in train_streams)} pages, {len(train_docs)} unique docs) -> {args.train_out}"
@@ -403,10 +412,12 @@ def _cmd_eval_run(args: argparse.Namespace) -> int:
         train, test = corpus.streams, test_corpus.streams
         combined_texts = {**corpus._texts, **test_corpus._texts}
         combined_layouts = {**corpus._layouts, **test_corpus._layouts}
+        combined_visuals = {**corpus._visuals, **test_corpus._visuals}
         resolver_corpus = HfPssCorpus(
             streams=[*corpus.streams, *test_corpus.streams],
             _texts=combined_texts,
             _layouts=combined_layouts,
+            _visuals=combined_visuals,
         )
     else:
         streams = corpus.streams
