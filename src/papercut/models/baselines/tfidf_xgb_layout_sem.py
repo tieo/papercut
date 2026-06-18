@@ -35,6 +35,8 @@ class TfIdfXgbLayoutSem(TfIdfXgbLayout):
 
     name = "tfidf_xgb_layout_sem"
 
+    DEFAULT_ENCODER_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
     def __init__(
         self,
         corpus: HfPssCorpus,
@@ -120,3 +122,15 @@ class TfIdfXgbLayoutSem(TfIdfXgbLayout):
 
         dense = np.hstack([struct_pairs, layout_pairs, pos_pairs, cross, cos])
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
+
+    @classmethod
+    def load_with_corpus(
+        cls,
+        path: str | Path,  # noqa: F821
+        corpus: HfPssCorpus,
+        encoder: PageEncoder | None = None,
+    ) -> TfIdfXgbLayoutSem:
+        instance = super().load_with_corpus(path, corpus)
+        instance._encoder = encoder  # type: ignore[attr-defined]
+        instance._embed_cache = {}  # type: ignore[attr-defined]
+        return instance

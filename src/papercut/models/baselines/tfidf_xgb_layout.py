@@ -137,12 +137,13 @@ class TfIdfXgbLayout:
         max_chars_per_page: int = 4000,
         threshold: float = 0.5,
         random_state: int = 0,
+        analyzer: str = "word",
     ) -> None:
         self.corpus = corpus
         self.max_chars_per_page = max_chars_per_page
         self.threshold = threshold
         self.vectorizer = TfidfVectorizer(
-            analyzer="word",
+            analyzer=analyzer,
             ngram_range=ngram_range,
             max_features=max_features,
             lowercase=True,
@@ -261,12 +262,28 @@ class TfIdfXgbLayout:
         probs = self.predict_probs(stream)
         return (True, *(p > self.threshold for p in probs[1:]))
 
-    def save(self, path: str) -> None:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+    def save(self, path: str | Path) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
         state = {
             "vectorizer": self.vectorizer,
             "model": self.model,
             "max_chars_per_page": self.max_chars_per_page,
+            "threshold": self.threshold,
+            "model_class": "TfIdfXgbLayout",
         }
-        with open(path, "wb") as f:
+        with target.open("wb") as f:
             pickle.dump(state, f)
+
+    @classmethod
+    def load_with_corpus(cls, path: str | Path, corpus: HfPssCorpus) -> TfIdfXgbLayout:
+        with Path(path).open("rb") as f:
+            state = pickle.load(f)
+        instance = cls.__new__(cls)
+        instance.corpus = corpus
+        instance.vectorizer = state["vectorizer"]
+        instance.model = state["model"]
+        instance.max_chars_per_page = state["max_chars_per_page"]
+        instance.threshold = state.get("threshold", 0.5)
+        instance._fitted = True
+        return instance
