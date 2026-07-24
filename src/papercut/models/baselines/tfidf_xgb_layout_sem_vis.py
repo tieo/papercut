@@ -19,9 +19,10 @@ if TYPE_CHECKING:
 class TfIdfXgbLayoutSemVis(TfIdfXgbLayoutSem):
     """Sem model plus cross-page visual similarity features.
 
-    Adds 69 dense features per page-pair: prev_vis (17), curr_vis (17),
-    diff (17), abs_diff (17), and visual cosine similarity (1). The visual
-    vector comes from corpus.visual() — aspect ratio, grayscale intensity
+    Adds 72 dense features per page-pair: prev_vis (17), curr_vis (17),
+    diff (17), abs_diff (17), full-page visual cosine similarity (1), and
+    header, body, and footer-grid cosine similarities (3). The visual
+    vector comes from corpus.visual(): aspect ratio, grayscale intensity
     statistics, edge density, and a 3x3 spatial intensity grid.
 
     _current_visuals is set before every _build_features call. fit() is
@@ -43,9 +44,7 @@ class TfIdfXgbLayoutSemVis(TfIdfXgbLayoutSem):
         self._current_visuals: np.ndarray | None = None
 
     def _gather_visuals(self, stream: Stream) -> np.ndarray:
-        return np.asarray(
-            [self.corpus.visual(p) for p in stream.pages], dtype=np.float32
-        )
+        return np.asarray([self.corpus.visual(p) for p in stream.pages], dtype=np.float32)
 
     def _gather(self, stream: Stream) -> tuple[list[str], np.ndarray]:
         texts, layouts = super()._gather(stream)
@@ -66,7 +65,23 @@ class TfIdfXgbLayoutSemVis(TfIdfXgbLayoutSem):
         vcos = (np.sum(prev_v * curr_v, axis=1, keepdims=True) / (vnorm_p * vnorm_c)).astype(
             np.float32
         )
-        vis_block = np.hstack([prev_v, curr_v, diff, adiff, vcos])
+
+        def region_cosine(start: int, stop: int) -> np.ndarray:
+            prev_region = prev_v[:, start:stop]
+            curr_region = curr_v[:, start:stop]
+            prev_norm = np.linalg.norm(prev_region, axis=1, keepdims=True) + 1e-9
+            curr_norm = np.linalg.norm(curr_region, axis=1, keepdims=True) + 1e-9
+            return (
+                np.sum(prev_region * curr_region, axis=1, keepdims=True) / (prev_norm * curr_norm)
+            ).astype(np.float32)
+
+        # The final nine visual values form a 3x3 intensity grid in row-major
+        # order. Repeated header or footer regions are strong same-document
+        # evidence even when the body content changes substantially.
+        header_cos = region_cosine(8, 11)
+        body_cos = region_cosine(11, 14)
+        footer_cos = region_cosine(14, 17)
+        vis_block = np.hstack([prev_v, curr_v, diff, adiff, vcos, header_cos, body_cos, footer_cos])
         return hstack([base, csr_matrix(vis_block)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:
@@ -76,7 +91,7 @@ class TfIdfXgbLayoutSemVis(TfIdfXgbLayoutSem):
         for stream in streams:
             if stream.boundaries is None:
                 raise ValueError("Cannot fit on unlabeled stream")
-            texts, layouts = super(TfIdfXgbLayoutSemVis, self)._gather(stream)
+            texts, layouts = super()._gather(stream)
             vis = self._gather_visuals(stream)
             per_stream.append((texts, layouts, vis))
             all_truncated.extend(self._truncate(t) for t in texts)
