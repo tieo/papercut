@@ -37,6 +37,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-depth", type=int, default=6)
     parser.add_argument("--learning-rate", type=float, default=0.04)
     parser.add_argument("--colsample-bytree", type=float, default=1.0)
+    parser.add_argument("--max-bin", type=int, default=256)
     parser.add_argument("--threshold", type=float, default=0.5)
     return parser.parse_args(argv)
 
@@ -67,7 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"streams={len(corpus.streams) - len(test.streams)} "
         f"analyzer={args.analyzer} ngrams={tuple(args.ngram_range)} "
         f"features={args.max_features} trees={args.n_estimators} "
-        f"depth={args.max_depth} colsample={args.colsample_bytree}",
+        f"depth={args.max_depth} colsample={args.colsample_bytree} max_bin={args.max_bin}",
         flush=True,
     )
     model = TfIdfXgbLayoutSemVis(
@@ -79,6 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_depth=args.max_depth,
         learning_rate=args.learning_rate,
         colsample_bytree=args.colsample_bytree,
+        max_bin=args.max_bin,
         threshold=args.threshold,
     )
     model.fit(corpus.streams[: -len(test.streams)])
@@ -103,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "max_depth": args.max_depth,
                 "learning_rate": args.learning_rate,
                 "colsample_bytree": args.colsample_bytree,
+                "max_bin": args.max_bin,
                 "threshold": args.threshold,
                 "n_streams": report.n_streams,
                 "page_f1_mean": report.page_f1_mean,

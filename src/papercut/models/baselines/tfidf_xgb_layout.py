@@ -135,6 +135,7 @@ class TfIdfXgbLayout:
         max_depth: int = 6,
         learning_rate: float = 0.05,
         colsample_bytree: float = 1.0,
+        max_bin: int = 256,
         max_chars_per_page: int = 4000,
         threshold: float = 0.5,
         random_state: int = 0,
@@ -158,6 +159,7 @@ class TfIdfXgbLayout:
             n_jobs=-1,
             eval_metric="logloss",
             tree_method="hist",
+            max_bin=max_bin,
             random_state=random_state,
         )
         self._n_estimators = n_estimators
