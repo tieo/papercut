@@ -34,16 +34,6 @@ ml = [
     "transformers>=4.41",
     "sentence-transformers>=3.0",
 ]
-
-[tool.uv.sources]
-torch = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
-]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 ocr = [
     "paddleocr>=2.7",
     "pytesseract>=0.3.10",
@@ -59,6 +49,16 @@ augment = [
 track = [
     "mlflow>=2.13",
 ]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [
