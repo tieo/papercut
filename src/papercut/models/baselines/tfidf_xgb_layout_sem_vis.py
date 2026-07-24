@@ -78,10 +78,21 @@ class TfIdfXgbLayoutSemVis(TfIdfXgbLayoutSem):
         # The final nine visual values form a 3x3 intensity grid in row-major
         # order. Repeated header or footer regions are strong same-document
         # evidence even when the body content changes substantially.
+        legacy_vis_block = np.hstack([prev_v, curr_v, diff, adiff, vcos])
+
+        # Models saved before regional similarities have 69 visual columns.
+        # Infer their expected shape from the fitted booster so a code update
+        # cannot make an existing checkpoint unusable.
+        expected_features = getattr(self.model, "n_features_in_", None)
+        if expected_features is not None and expected_features == base.shape[1] + legacy_vis_block.shape[1]:
+            return hstack([base, csr_matrix(legacy_vis_block)]).tocsr()
+
         header_cos = region_cosine(8, 11)
         body_cos = region_cosine(11, 14)
         footer_cos = region_cosine(14, 17)
-        vis_block = np.hstack([prev_v, curr_v, diff, adiff, vcos, header_cos, body_cos, footer_cos])
+        vis_block = np.hstack(
+            [legacy_vis_block, header_cos, body_cos, footer_cos]
+        )
         return hstack([base, csr_matrix(vis_block)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:
