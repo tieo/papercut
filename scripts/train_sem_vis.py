@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -89,7 +90,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         flush=True,
     )
     model.save(args.out)
+    metrics_path = args.out.with_suffix(".metrics.json")
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "train": str(args.train),
+                "test": str(args.test),
+                "analyzer": args.analyzer,
+                "ngram_range": args.ngram_range,
+                "max_features": args.max_features,
+                "n_estimators": args.n_estimators,
+                "max_depth": args.max_depth,
+                "learning_rate": args.learning_rate,
+                "colsample_bytree": args.colsample_bytree,
+                "threshold": args.threshold,
+                "n_streams": report.n_streams,
+                "page_f1_mean": report.page_f1_mean,
+                "pq_mean": report.pq_mean,
+                "stp": report.stp,
+                "mndd_mean": report.mndd_mean,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
     print(f"Saved {args.out}", flush=True)
+    print(f"Saved {metrics_path}", flush=True)
     return 0
 
 
