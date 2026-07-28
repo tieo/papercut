@@ -1,0 +1,74 @@
+{
+  "views": [
+    {
+      "tag": "VIEW",
+      "uid": "VIEW-SPLIT-REPORT",
+      "title": "Split report",
+      "statement": "Show the documents written from one scanned PDF, the source pages in each result, and pages omitted as confirmed blanks.",
+      "status": "Built",
+      "relations": [],
+      "renders": [
+        {"file": "split-report-wide-light.png", "label": "wide light"},
+        {"file": "split-report-wide-dark.png", "label": "wide dark"},
+        {"file": "split-report-phone-light.png", "label": "phone light"},
+        {"file": "split-report-phone-dark.png", "label": "phone dark"}
+      ]
+    },
+    {
+      "tag": "VIEW",
+      "uid": "VIEW-INBOX-REPORT",
+      "title": "Inbox processing report",
+      "statement": "Show which unseen PDFs were processed into the Paperless consume folder and record their content hashes so unchanged inputs are not processed twice.",
+      "status": "Built",
+      "relations": [],
+      "renders": [
+        {"file": "inbox-report-wide-light.png", "label": "wide light"},
+        {"file": "inbox-report-wide-dark.png", "label": "wide dark"},
+        {"file": "inbox-report-phone-light.png", "label": "phone light"},
+        {"file": "inbox-report-phone-dark.png", "label": "phone dark"}
+      ]
+    }
+  ],
+  "states": [
+    {
+      "tag": "STATE", "uid": "STATE-SPLIT-LOADING", "title": "Loading", "statement": "Pages are rendering and OCR is extracting text, layout, and visual features.", "status": "Built",
+      "relations": [{"to": "VIEW-SPLIT-REPORT", "role": "State of"}],
+      "renders": [{"file": "split-report-loading-wide-light.png", "label": "wide light"}, {"file": "split-report-loading-wide-dark.png", "label": "wide dark"}, {"file": "split-report-loading-phone-light.png", "label": "phone light"}, {"file": "split-report-loading-phone-dark.png", "label": "phone dark"}]
+    },
+    {
+      "tag": "STATE", "uid": "STATE-SPLIT-EMPTY", "title": "Empty", "statement": "The input contains no pages that can produce an output document.", "status": "Built",
+      "relations": [{"to": "VIEW-SPLIT-REPORT", "role": "State of"}],
+      "renders": [{"file": "split-report-empty-wide-light.png", "label": "wide light"}, {"file": "split-report-empty-wide-dark.png", "label": "wide dark"}, {"file": "split-report-empty-phone-light.png", "label": "phone light"}, {"file": "split-report-empty-phone-dark.png", "label": "phone dark"}]
+    },
+    {
+      "tag": "STATE", "uid": "STATE-SPLIT-FAILED", "title": "Failed", "statement": "Rendering, OCR, or model loading failed and the command returns the actionable error.", "status": "Built",
+      "relations": [{"to": "VIEW-SPLIT-REPORT", "role": "State of"}],
+      "renders": [{"file": "split-report-failed-wide-light.png", "label": "wide light"}, {"file": "split-report-failed-wide-dark.png", "label": "wide dark"}, {"file": "split-report-failed-phone-light.png", "label": "phone light"}, {"file": "split-report-failed-phone-dark.png", "label": "phone dark"}]
+    },
+    {
+      "tag": "STATE", "uid": "STATE-INBOX-LOADING", "title": "Loading", "statement": "Unseen input PDFs are being checked and split.", "status": "Built",
+      "relations": [{"to": "VIEW-INBOX-REPORT", "role": "State of"}],
+      "renders": [{"file": "inbox-report-loading-wide-light.png", "label": "wide light"}, {"file": "inbox-report-loading-wide-dark.png", "label": "wide dark"}, {"file": "inbox-report-loading-phone-light.png", "label": "phone light"}, {"file": "inbox-report-loading-phone-dark.png", "label": "phone dark"}]
+    },
+    {
+      "tag": "STATE", "uid": "STATE-INBOX-EMPTY", "title": "Empty", "statement": "Every input PDF is already recorded at its current content hash.", "status": "Built",
+      "relations": [{"to": "VIEW-INBOX-REPORT", "role": "State of"}],
+      "renders": [{"file": "inbox-report-empty-wide-light.png", "label": "wide light"}, {"file": "inbox-report-empty-wide-dark.png", "label": "wide dark"}, {"file": "inbox-report-empty-phone-light.png", "label": "phone light"}, {"file": "inbox-report-empty-phone-dark.png", "label": "phone dark"}]
+    },
+    {
+      "tag": "STATE", "uid": "STATE-INBOX-FAILED", "title": "Failed", "statement": "A PDF could not be processed and remains eligible for a later retry.", "status": "Built",
+      "relations": [{"to": "VIEW-INBOX-REPORT", "role": "State of"}],
+      "renders": [{"file": "inbox-report-failed-wide-light.png", "label": "wide light"}, {"file": "inbox-report-failed-wide-dark.png", "label": "wide dark"}, {"file": "inbox-report-failed-phone-light.png", "label": "phone light"}, {"file": "inbox-report-failed-phone-dark.png", "label": "phone dark"}]
+    }
+  ],
+  "requirements": [
+    {"tag": "REQUIREMENT", "uid": "REQ-SPLIT-WRITE", "title": "Write split documents", "statement": "The splitter writes one PDF per predicted document and reports the source pages in each output.", "status": "Built", "relations": [{"to": "VIEW-SPLIT-REPORT", "role": "Lives in"}]},
+    {"tag": "REQUIREMENT", "uid": "REQ-SPLIT-BLANKS", "title": "Omit only confirmed blank pages", "statement": "A page is omitted only when it has no OCR text and no visual content.", "status": "Built", "relations": [{"to": "VIEW-SPLIT-REPORT", "role": "Lives in"}]},
+    {"tag": "REQUIREMENT", "uid": "REQ-INBOX-DEDUP", "title": "Process each input version once", "statement": "The inbox stores a content hash after processing and processes a changed PDF again.", "status": "Built", "relations": [{"to": "VIEW-INBOX-REPORT", "role": "Lives in"}]},
+    {"tag": "REQUIREMENT", "uid": "REQ-INBOX-CONSUME", "title": "Deliver to the consume folder", "statement": "Each predicted document is written to the Paperless consume folder with a stable input-derived prefix.", "status": "Built", "relations": [{"to": "VIEW-INBOX-REPORT", "role": "Lives in"}]}
+  ],
+  "stories": [
+    {"tag": "STORY", "uid": "STORY-SPLIT", "title": "Split a scan stack", "statement": "A person turns one scan stack into individually consumable document PDFs.", "status": "Built", "relations": []},
+    {"tag": "STORY-INBOX", "uid": "STORY-INBOX", "title": "Process an inbox", "statement": "A person processes newly arrived scans without duplicating unchanged inputs.", "status": "Built", "relations": []}
+  ]
+}

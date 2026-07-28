@@ -1,0 +1,10 @@
+{
+  "title": "Papercut",
+  "subtitle": "page stream segmentation",
+  "states": ["Loading", "Empty", "Failed"],
+  "renders": {
+    "command": ["./make-renders.sh"],
+    "dir": "../..",
+    "statement": "Draws representative terminal reports for the local splitter and inbox processor."
+  }
+}
