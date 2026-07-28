@@ -16,6 +16,7 @@ import subprocess
 import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 
 from papercut.data.loaders.hf import HfPssCorpus
@@ -77,7 +78,7 @@ def _split_stack(document: Document, starts: Sequence[int]) -> list[Document]:
     starts = tuple(starts)
     if not starts or starts[0] != 1:
         raise ValueError(f"Stack {document.identifier} must start at page 1")
-    if any(a >= b for a, b in zip(starts, starts[1:], strict=True)):
+    if any(a >= b for a, b in pairwise(starts)):
         raise ValueError(f"Stack {document.identifier} starts must be strictly increasing")
     if starts[-1] > len(document.pages):
         raise ValueError(f"Stack {document.identifier} start exceeds its page count")
@@ -127,7 +128,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--source-dir", type=Path, action="append", required=True)
     parser.add_argument("--stack", type=Path, action="append", default=[])
     parser.add_argument("--exclude-dir", type=Path, action="append", default=[])
-    parser.add_argument("--labels", type=Path, required=True)
+    parser.add_argument("--labels", type=Path)
     parser.add_argument("--train-out", type=Path, required=True)
     parser.add_argument("--test-out", type=Path, required=True)
     parser.add_argument("--train-streams", type=int, default=500)
@@ -145,7 +146,9 @@ def _pdfs(roots: Iterable[Path], excluded: set[Path], excluded_dirs: set[Path]) 
     seen_hashes: set[str] = set()
     result: list[Path] = []
     for root in roots:
-        for path in sorted(root.rglob("*.pdf")):
+        for path in sorted(
+            path for path in root.rglob("*") if path.is_file() and path.suffix.lower() == ".pdf"
+        ):
             if path.resolve() in excluded:
                 continue
             if any(directory in path.resolve().parents for directory in excluded_dirs):
@@ -161,8 +164,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _arguments(argv)
     if not 0 < args.test_fraction < 1:
         raise ValueError("--test-fraction must be between 0 and 1")
-    labels = json.loads(args.labels.read_text())
-    stack_labels = {Path(path).resolve(): starts for path, starts in labels["stacks"].items()}
+    if args.labels is None:
+        stack_labels: dict[Path, Sequence[int]] = {}
+    else:
+        labels = json.loads(args.labels.read_text())
+        stack_labels = {Path(path).resolve(): starts for path, starts in labels["stacks"].items()}
     stack_paths = {path.resolve() for path in args.stack}
     if stack_paths != set(stack_labels):
         raise ValueError("--stack paths and labels.stacks keys must match")
