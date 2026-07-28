@@ -13,6 +13,8 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     stdenv.cc.cc.lib
     zlib
+    (builtins.getAttr "poppler-utils" pkgs)
+    tesseract
   ];
 
   shellHook = ''
