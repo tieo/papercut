@@ -6,6 +6,11 @@
       "title": "Split report",
       "statement": "Show the documents written from one scanned PDF, the source pages in each result, and pages omitted as confirmed blanks.",
       "status": "Built",
+      "sources": [
+        "src/papercut/cli/main.py",
+        "src/papercut/serve/predict.py",
+        "src/papercut/serve/split_pdf.py"
+      ],
       "relations": [],
       "renders": [
         {"file": "split-report-wide-light.png", "label": "wide light"},
@@ -20,6 +25,11 @@
       "title": "Inbox processing report",
       "statement": "Show which unseen PDFs were processed into the Paperless consume folder and record their content hashes so unchanged inputs are not processed twice.",
       "status": "Built",
+      "sources": [
+        "src/papercut/cli/main.py",
+        "src/papercut/serve/inbox.py",
+        "src/papercut/serve/predict.py"
+      ],
       "relations": [],
       "renders": [
         {"file": "inbox-report-wide-light.png", "label": "wide light"},
