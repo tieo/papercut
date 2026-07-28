@@ -15,6 +15,7 @@ import random
 import subprocess
 import sys
 from collections.abc import Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -137,6 +138,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--languages", default="deu+eng")
     parser.add_argument("--dpi", type=int, default=200)
+    parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--pdftoppm")
     parser.add_argument("--tesseract")
     return parser.parse_args(argv)
@@ -164,6 +166,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _arguments(argv)
     if not 0 < args.test_fraction < 1:
         raise ValueError("--test-fraction must be between 0 and 1")
+    if args.workers <= 0:
+        raise ValueError("--workers must be positive")
     if args.labels is None:
         stack_labels: dict[Path, Sequence[int]] = {}
     else:
@@ -176,22 +180,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     documents: list[Document] = []
     excluded_dirs = {path.resolve() for path in args.exclude_dir}
     skipped = 0
-    for path in _pdfs(args.source_dir, excluded=stack_paths, excluded_dirs=excluded_dirs):
-        print("OCR document", len(documents) + 1, flush=True)
-        try:
-            documents.append(
-                _parse_document(
-                    path,
-                    _digest(path)[:16],
-                    languages=args.languages,
-                    dpi=args.dpi,
-                    pdftoppm=args.pdftoppm,
-                    tesseract=args.tesseract,
-                )
-            )
-        except (OSError, subprocess.CalledProcessError):
-            skipped += 1
-            print("Skipped unreadable PDF", file=sys.stderr, flush=True)
+    source_paths = _pdfs(args.source_dir, excluded=stack_paths, excluded_dirs=excluded_dirs)
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = {
+            executor.submit(
+                _parse_document,
+                path,
+                _digest(path)[:16],
+                languages=args.languages,
+                dpi=args.dpi,
+                pdftoppm=args.pdftoppm,
+                tesseract=args.tesseract,
+            ): path
+            for path in source_paths
+        }
+        for number, future in enumerate(as_completed(futures), start=1):
+            try:
+                documents.append(future.result())
+                print("OCR document", number, flush=True)
+            except (OSError, subprocess.CalledProcessError):
+                skipped += 1
+                print("Skipped unreadable PDF", file=sys.stderr, flush=True)
     for path in sorted(stack_paths):
         print("OCR labeled stack", flush=True)
         stack = _parse_document(
