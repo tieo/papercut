@@ -52,23 +52,26 @@ def write_split_pdfs(
     output_dir: Path,
     boundaries: Sequence[bool],
     blank_pages: Sequence[bool],
+    filename_prefix: str = "document",
 ) -> tuple[SplitOutput, ...]:
     """Write one PDF per predicted document, excluding confirmed blank pages.
 
-    The input file is only read. Outputs are named ``document_001.pdf``,
-    ``document_002.pdf``, and so on in ``output_dir``.
+    The input file is only read. Outputs are named ``<prefix>_001.pdf``,
+    ``<prefix>_002.pdf``, and so on in ``output_dir``.
     """
     reader = PdfReader(str(input_pdf))
     if len(reader.pages) != len(boundaries):
         raise ValueError(
             f"PDF has {len(reader.pages)} pages but received {len(boundaries)} boundaries"
         )
+    if not filename_prefix or Path(filename_prefix).name != filename_prefix:
+        raise ValueError("filename_prefix must be a non-empty filename stem")
 
     groups = document_page_indices(boundaries, blank_pages)
     output_dir.mkdir(parents=True, exist_ok=True)
     outputs: list[SplitOutput] = []
     for number, indices in enumerate(groups, start=1):
-        path = output_dir / f"document_{number:03d}.pdf"
+        path = output_dir / f"{filename_prefix}_{number:03d}.pdf"
         writer = PdfWriter()
         for index in indices:
             writer.add_page(reader.pages[index])

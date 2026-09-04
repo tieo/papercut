@@ -35,7 +35,7 @@ def _has_visual_content(
     return mean_i < max_mean_intensity or edge >= min_edge_density
 
 
-def _is_blank(
+def is_blank_page(
     text: str,
     visual: Sequence[float] | None,
     max_mean_intensity: float,
@@ -51,6 +51,24 @@ def _is_blank(
     if text and text.strip():
         return False
     return not _has_visual_content(visual, max_mean_intensity, min_edge_density)
+
+
+def blank_page_flags(
+    corpus: HfPssCorpus,
+    stream: Stream,
+    max_mean_intensity: float = 0.99,
+    min_edge_density: float = 0.003,
+) -> tuple[bool, ...]:
+    """Classify pages that can be safely omitted from generated PDFs."""
+    flags: list[bool] = []
+    for page in stream.pages:
+        text = corpus.text(page) or ""
+        try:
+            visual = corpus.visual(page)
+        except KeyError:
+            visual = None
+        flags.append(is_blank_page(text, visual, max_mean_intensity, min_edge_density))
+    return tuple(flags)
 
 
 @dataclass
@@ -77,17 +95,14 @@ class BlankPageGated:
     name: str = field(default="blank_gated")
 
     def _blanks(self, stream: Stream) -> list[bool]:
-        flags: list[bool] = []
-        for page in stream.pages:
-            text = self.corpus.text(page) or ""
-            try:
-                visual = self.corpus.visual(page)
-            except Exception:
-                visual = None
-            flags.append(
-                _is_blank(text, visual, self.max_mean_intensity, self.min_edge_density)
+        return list(
+            blank_page_flags(
+                self.corpus,
+                stream,
+                max_mean_intensity=self.max_mean_intensity,
+                min_edge_density=self.min_edge_density,
             )
-        return flags
+        )
 
     def fit(self, streams: Sequence[Stream]) -> None:
         if callable(getattr(self.submodel, "fit", None)):

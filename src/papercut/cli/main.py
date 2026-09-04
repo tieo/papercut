@@ -46,6 +46,61 @@ def _cmd_streams_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve_split_pdf(args: argparse.Namespace) -> int:
+    from papercut.serve.predict import PdfSplitter
+
+    input_pdf = Path(args.input_pdf)
+    model_path = Path(args.model)
+    if not input_pdf.is_file():
+        print(f"Input PDF not found: {input_pdf}", file=sys.stderr)
+        return 2
+    if not model_path.is_file():
+        print(f"Model not found: {model_path}", file=sys.stderr)
+        return 2
+
+    splitter = PdfSplitter(
+        model_path,
+        languages=args.languages,
+        dpi=args.dpi,
+        pdftoppm_path=args.pdftoppm,
+        tesseract_path=args.tesseract,
+        threshold=args.threshold,
+    )
+    report = splitter.split(input_pdf, Path(args.output_dir))
+    print(
+        f"Split {len(report.boundaries)} pages into {len(report.outputs)} documents "
+        f"and removed {sum(report.blank_pages)} blank pages."
+    )
+    for output in report.outputs:
+        source_pages = ", ".join(str(index + 1) for index in output.source_page_indices)
+        print(f"{output.path}: source pages {source_pages}")
+    return 0
+
+
+def _cmd_serve_process_inbox(args: argparse.Namespace) -> int:
+    from papercut.serve.inbox import process_inbox_once
+    from papercut.serve.predict import PdfSplitter
+
+    splitter = PdfSplitter(
+        Path(args.model),
+        languages=args.languages,
+        dpi=args.dpi,
+        threshold=args.threshold,
+        pdftoppm_path=args.pdftoppm,
+        tesseract_path=args.tesseract,
+    )
+    results = process_inbox_once(
+        Path(args.inbox_dir), Path(args.consume_dir), Path(args.state), splitter
+    )
+    print(f"Processed {len(results)} input PDFs.")
+    for result in results:
+        print(
+            f"{result.source}: {len(result.report.outputs)} documents, "
+            f"{sum(result.report.blank_pages)} blank pages removed"
+        )
+    return 0
+
+
 def _cmd_eval_baseline_smoke(_: argparse.Namespace) -> int:
     from papercut.eval.runner import evaluate
     from papercut.models.baselines.trivial import EveryPageNewDoc, NeverSplit
@@ -556,6 +611,37 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--mean-docs", type=float, default=10.0)
     build.add_argument("--seed", type=int, default=0)
     build.set_defaults(func=_cmd_streams_build)
+
+    serve = sub.add_parser("serve", help="Run local PDF splitting for paperless integration.")
+    serve_sub = serve.add_subparsers(dest="serve_command", required=True)
+    split_pdf = serve_sub.add_parser(
+        "split-pdf", help="Split a scanned PDF and omit confirmed blank pages."
+    )
+    split_pdf.add_argument("input_pdf")
+    split_pdf.add_argument("output_dir")
+    split_pdf.add_argument("--model", required=True, help="Saved semantic visual model.")
+    split_pdf.add_argument(
+        "--languages", default="eng", help="Tesseract languages, such as deu+eng."
+    )
+    split_pdf.add_argument("--dpi", type=int, default=200)
+    split_pdf.add_argument("--threshold", type=float, default=None)
+    split_pdf.add_argument("--pdftoppm", default=None, help="Path to the pdftoppm executable.")
+    split_pdf.add_argument("--tesseract", default=None, help="Path to the tesseract executable.")
+    split_pdf.set_defaults(func=_cmd_serve_split_pdf)
+    inbox = serve_sub.add_parser(
+        "process-inbox",
+        help="Split each unseen inbox PDF into Paperless consume-folder documents.",
+    )
+    inbox.add_argument("inbox_dir")
+    inbox.add_argument("consume_dir")
+    inbox.add_argument("--state", required=True, help="Persistent JSON state outside the inbox.")
+    inbox.add_argument("--model", required=True, help="Saved semantic visual model.")
+    inbox.add_argument("--languages", default="eng", help="Tesseract languages, such as deu+eng.")
+    inbox.add_argument("--dpi", type=int, default=200)
+    inbox.add_argument("--threshold", type=float, default=None)
+    inbox.add_argument("--pdftoppm", default=None, help="Path to the pdftoppm executable.")
+    inbox.add_argument("--tesseract", default=None, help="Path to the tesseract executable.")
+    inbox.set_defaults(func=_cmd_serve_process_inbox)
 
     eval_p = sub.add_parser("eval", help="Run evaluation.")
     eval_sub = eval_p.add_subparsers(dest="eval_command", required=True)
