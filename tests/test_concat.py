@@ -7,9 +7,9 @@ import pytest
 from pypdf import PdfReader
 
 from papercut.streams.concat import (
-    _poisson,
     build_stream_corpus,
     concat_pdfs,
+    poisson,
     sample_stream_specs,
 )
 from papercut.streams.types import PageRef
@@ -52,7 +52,7 @@ def test_concat_pdfs_rejects_zero_page_source(tmp_path: Path) -> None:
 
 def test_poisson_distribution_shape() -> None:
     rng = random.Random(42)
-    samples = [_poisson(rng, 5.0) for _ in range(2000)]
+    samples = [poisson(rng, 5.0) for _ in range(2000)]
     mean = sum(samples) / len(samples)
     assert 4.5 < mean < 5.5
     assert min(samples) >= 0

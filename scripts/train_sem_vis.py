@@ -27,7 +27,13 @@ from papercut.models.baselines.tfidf_xgb_layout_sem_vis import TfIdfXgbLayoutSem
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--train", type=Path, required=True, help="Training corpus pickle.")
+    parser.add_argument(
+        "--train",
+        type=Path,
+        action="append",
+        required=True,
+        help="Training corpus pickle; repeat to train on several corpora at once.",
+    )
     parser.add_argument("--test", type=Path, required=True, help="Holdout corpus pickle.")
     parser.add_argument("--out", type=Path, required=True, help="Destination model pickle.")
     parser.add_argument("--analyzer", choices=("word", "char", "char_wb"), default="word")
@@ -42,13 +48,22 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _combined_corpus(train: HfPssCorpus, test: HfPssCorpus) -> HfPssCorpus:
-    return HfPssCorpus(
-        streams=[*train.streams, *test.streams],
-        _texts={**train._texts, **test._texts},
-        _layouts={**train._layouts, **test._layouts},
-        _visuals={**train._visuals, **test._visuals},
-    )
+def _combined_corpus(corpora: Sequence[HfPssCorpus]) -> HfPssCorpus:
+    """Merge corpora into one, holdout last, so a model sees every page it needs.
+
+    The model resolves page features through a single corpus, so training on
+    several sources means merging them first. Page identity carries its source
+    in `PageRef.source`, which keeps pages from different corpora apart.
+    """
+    streams = [stream for corpus in corpora for stream in corpus.streams]
+    texts: dict = {}
+    layouts: dict = {}
+    visuals: dict = {}
+    for corpus in corpora:
+        texts.update(corpus._texts)
+        layouts.update(corpus._layouts)
+        visuals.update(corpus._visuals)
+    return HfPssCorpus(streams=streams, _texts=texts, _layouts=layouts, _visuals=visuals)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -57,15 +72,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("--colsample-bytree must be in (0, 1]")
 
     print("Loading corpora", flush=True)
-    train = HfPssCorpus.load_from_disk(args.train)
+    trains = [HfPssCorpus.load_from_disk(path) for path in args.train]
     test = HfPssCorpus.load_from_disk(args.test)
-    corpus = _combined_corpus(train, test)
-    del train
+    corpus = _combined_corpus([*trains, test])
+    n_train_streams = sum(len(item.streams) for item in trains)
+    del trains
     gc.collect()
 
     print(
         "Fitting "
-        f"streams={len(corpus.streams) - len(test.streams)} "
+        f"streams={n_train_streams} "
         f"analyzer={args.analyzer} ngrams={tuple(args.ngram_range)} "
         f"features={args.max_features} trees={args.n_estimators} "
         f"depth={args.max_depth} colsample={args.colsample_bytree} max_bin={args.max_bin}",
@@ -83,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_bin=args.max_bin,
         threshold=args.threshold,
     )
-    model.fit(corpus.streams[: -len(test.streams)])
+    model.fit(corpus.streams[:n_train_streams])
     print("Evaluating holdout", flush=True)
     report = evaluate(model, test.streams)
     print(
@@ -96,7 +112,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     metrics_path.write_text(
         json.dumps(
             {
-                "train": str(args.train),
+                "train": [str(path) for path in args.train],
                 "test": str(args.test),
                 "analyzer": args.analyzer,
                 "ngram_range": args.ngram_range,

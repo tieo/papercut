@@ -22,6 +22,7 @@ from pathlib import Path
 
 from papercut.data.loaders.hf import HfPssCorpus
 from papercut.serve.pdf_input import pdf_input
+from papercut.streams.concat import poisson
 from papercut.streams.types import PageRef, Stream
 
 
@@ -93,7 +94,21 @@ def _split_stack(document: Document, starts: Sequence[int]) -> list[Document]:
     ]
 
 
-def _stream_corpus(documents: Sequence[Document], n_streams: int, seed: int) -> HfPssCorpus:
+def _stream_corpus(
+    documents: Sequence[Document],
+    n_streams: int,
+    seed: int,
+    mean_documents: float,
+    max_document_pages: int | None,
+) -> HfPssCorpus:
+    """Compose streams the way a scanner stack arrives.
+
+    Documents longer than `max_document_pages` are left out: an archive scan of
+    several hundred pages carries most of the pages in the corpus while
+    contributing one boundary, which buries the mail the splitter runs on.
+    """
+    if max_document_pages is not None:
+        documents = [document for document in documents if len(document.pages) <= max_document_pages]
     if not documents:
         raise ValueError("Need at least one document")
     rng = random.Random(seed)
@@ -106,7 +121,7 @@ def _stream_corpus(documents: Sequence[Document], n_streams: int, seed: int) -> 
 
     streams: list[Stream] = []
     for _ in range(n_streams):
-        count = min(len(documents), rng.randint(2, min(12, len(documents))))
+        count = min(len(documents), max(1, poisson(rng, mean_documents)))
         selected = rng.sample(list(documents), count)
         pages: list[PageRef] = []
         boundaries: list[bool] = []
@@ -135,6 +150,8 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--train-streams", type=int, default=500)
     parser.add_argument("--test-streams", type=int, default=150)
     parser.add_argument("--test-fraction", type=float, default=0.25)
+    parser.add_argument("--mean-documents", type=float, default=1.5)
+    parser.add_argument("--max-document-pages", type=int, default=20)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--languages", default="deu+eng")
     parser.add_argument("--dpi", type=int, default=200)
@@ -220,8 +237,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     train_documents = documents[test_count:]
     if len(train_documents) < 2 or len(test_documents) < 2:
         raise ValueError("Need at least two train and test documents")
-    _stream_corpus(train_documents, args.train_streams, args.seed).save(args.train_out)
-    _stream_corpus(test_documents, args.test_streams, args.seed + 1).save(args.test_out)
+    _stream_corpus(
+        train_documents,
+        args.train_streams,
+        args.seed,
+        args.mean_documents,
+        args.max_document_pages,
+    ).save(args.train_out)
+    _stream_corpus(
+        test_documents,
+        args.test_streams,
+        args.seed + 1,
+        args.mean_documents,
+        args.max_document_pages,
+    ).save(args.test_out)
     print(
         f"Saved {len(train_documents)} train and {len(test_documents)} test documents "
         f"to {args.train_out} and {args.test_out}; skipped {skipped} unreadable PDFs",

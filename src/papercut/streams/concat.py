@@ -43,7 +43,7 @@ def concat_pdfs(sources: Sequence[SourceSpec], output_path: Path) -> Stream:
     return Stream(pages=tuple(pages), boundaries=tuple(boundaries))
 
 
-def _poisson(rng: random.Random, lam: float) -> int:
+def poisson(rng: random.Random, lam: float) -> int:
     """Knuth's algorithm. Returns k in [0, infinity)."""
     if lam <= 0:
         raise ValueError("lam must be positive")
@@ -76,7 +76,7 @@ def sample_stream_specs(
         raise ValueError("source_pool is empty")
     specs: list[list[SourceSpec]] = []
     for _ in range(n_streams):
-        n_docs = max(1, _poisson(rng, mean_docs_per_stream))
+        n_docs = max(1, poisson(rng, mean_docs_per_stream))
         n_docs = min(n_docs, len(source_pool))
         specs.append(rng.sample(list(source_pool), k=n_docs))
     return specs
