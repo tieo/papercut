@@ -37,3 +37,24 @@ def test_continuation_inside_one_document_is_marked() -> None:
 
 def test_missing_pagination_yields_zeros_beyond_the_flags() -> None:
     assert _pagination_pair_features("nothing", "Seite 1 von 2") == [0.0, 1.0, 0.0, 0.0, 0.0, 0.0]
+
+
+def test_correspondence_marks_separate_a_letter_from_a_chapter() -> None:
+    from papercut.models.baselines.tfidf_xgb_layout import _correspondence_marks
+
+    letter = "Rechnung vom 14.09.2026 Kundennummer 4215340000 Betrag 149,90 EUR Sehr geehrte"
+    chapter = "Chapter 1. INTRODUCTION This sample profiles a CUDA kernel which transposes"
+    marks_letter = _correspondence_marks(letter)
+    marks_chapter = _correspondence_marks(chapter)
+    assert marks_letter[0] == 1.0  # a date
+    assert marks_letter[1] == 1.0  # a long reference number
+    assert marks_letter[2] == 1.0  # an amount
+    assert marks_chapter[0] == 0.0
+    assert marks_chapter[1] == 0.0
+    assert marks_letter[3] > marks_chapter[3]
+
+
+def test_correspondence_marks_of_an_empty_page_are_zero() -> None:
+    from papercut.models.baselines.tfidf_xgb_layout import _correspondence_marks
+
+    assert _correspondence_marks("   ") == [0.0, 0.0, 0.0, 0.0, 0.0]

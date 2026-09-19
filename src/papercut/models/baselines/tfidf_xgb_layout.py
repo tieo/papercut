@@ -53,6 +53,39 @@ def _digit_run_count(text: str) -> int:
 _PAGINATION = re.compile(r"\b(\d{1,3})\s*(?:[/|-]|[^\W\d_]{1,12}\s)\s*(\d{1,3})\b")
 
 
+_DATE_LIKE = re.compile(r"\b\d{1,4}[./-]\d{1,2}[./-]\d{2,4}\b")
+_LONG_NUMBER = re.compile(r"\b\d{6,}\b")
+_MONEY_LIKE = re.compile(r"\b\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\b")
+
+
+def _correspondence_marks(text: str, head: int = 500) -> list[float]:
+    """Count the marks that open a letter rather than a chapter.
+
+    The model confuses the first page of a section with the first page of a
+    document, which is what makes it cut a manual at every chapter and merge a
+    run of invoices. What separates them is not language but furniture: a
+    piece of correspondence opens with a date, a reference or customer number,
+    an amount, and a short block of address lines, while a chapter opens with
+    a heading and prose. Counting those marks in the opening of a page keeps
+    the cue numeric and free of any particular wording.
+    """
+    opening = text[:head]
+    if not opening.strip():
+        return [0.0, 0.0, 0.0, 0.0, 0.0]
+    tokens = opening.split()
+    numeric = sum(1 for token in tokens if any(ch.isdigit() for ch in token))
+    # A date carries a pair of groups that reads as an amount, so amounts are
+    # counted in what remains once the dates are taken out.
+    without_dates = _DATE_LIKE.sub(" ", opening)
+    return [
+        float(len(_DATE_LIKE.findall(opening))),
+        float(len(_LONG_NUMBER.findall(opening))),
+        float(len(_MONEY_LIKE.findall(without_dates))),
+        numeric / max(1, len(tokens)),
+        float(sum(1 for token in tokens[:40] if token.isupper() and len(token) > 2)),
+    ]
+
+
 def _pagination(text: str, window: int = 400) -> tuple[bool, int, int]:
     """Read a "page k of n" mark off the head and foot of a page.
 
@@ -138,6 +171,14 @@ def _cross_page_features(
     curr_digits = _digit_run_count(foot_chars(curr, foot))
 
     extra = _pagination_pair_features(prev, curr) if pagination else []
+    if pagination:
+        prev_marks = _correspondence_marks(prev)
+        curr_marks = _correspondence_marks(curr)
+        extra = [
+            *extra,
+            *curr_marks,
+            *(c - p for c, p in zip(curr_marks, prev_marks, strict=True)),
+        ]
     return [
         *multi_head,
         *multi_foot,
