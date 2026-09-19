@@ -118,6 +118,7 @@ class TfIdfXgbLayoutSem(TfIdfXgbLayout):
                     texts[i - 1],
                     texts[i],
                     pagination=getattr(self, "pagination_features", False),
+                    correspondence=getattr(self, "correspondence_features", False),
                 )
                 for i in range(1, n)
             ],

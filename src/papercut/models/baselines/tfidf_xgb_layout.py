@@ -125,7 +125,12 @@ def _pagination_pair_features(prev: str, curr: str) -> list[float]:
 
 
 def _cross_page_features(
-    prev: str, curr: str, head: int = 300, foot: int = 300, pagination: bool = False
+    prev: str,
+    curr: str,
+    head: int = 300,
+    foot: int = 300,
+    pagination: bool = False,
+    correspondence: bool = False,
 ) -> list[float]:
     """Language-agnostic similarity signals between consecutive pages.
 
@@ -171,7 +176,7 @@ def _cross_page_features(
     curr_digits = _digit_run_count(foot_chars(curr, foot))
 
     extra = _pagination_pair_features(prev, curr) if pagination else []
-    if pagination:
+    if correspondence:
         prev_marks = _correspondence_marks(prev)
         curr_marks = _correspondence_marks(curr)
         extra = [
@@ -277,6 +282,7 @@ class TfIdfXgbLayout:
         analyzer: str = "word",
         context_features: bool = True,
         pagination_features: bool = True,
+        correspondence_features: bool = True,
         standardised_features: bool = False,
     ) -> None:
         self.corpus = corpus
@@ -284,6 +290,7 @@ class TfIdfXgbLayout:
         self.threshold = threshold
         self.context_features = context_features
         self.pagination_features = pagination_features
+        self.correspondence_features = correspondence_features
         self.standardised_features = standardised_features
         self.vectorizer = TfidfVectorizer(
             analyzer=analyzer,
@@ -360,7 +367,10 @@ class TfIdfXgbLayout:
         cross = np.asarray(
             [
                 _cross_page_features(
-                    texts[i - 1], texts[i], pagination=self.pagination_features
+                    texts[i - 1],
+                    texts[i],
+                    pagination=self.pagination_features,
+                    correspondence=self.correspondence_features,
                 )
                 for i in range(1, n)
             ],
@@ -425,6 +435,7 @@ class TfIdfXgbLayout:
             "threshold": self.threshold,
             "context_features": self.context_features,
             "pagination_features": self.pagination_features,
+            "correspondence_features": self.correspondence_features,
             "standardised_features": self.standardised_features,
             "model_class": "TfIdfXgbLayout",
         }
@@ -445,6 +456,7 @@ class TfIdfXgbLayout:
         # feature layout, so the absent key means those columns stay off.
         instance.context_features = state.get("context_features", False)
         instance.pagination_features = state.get("pagination_features", False)
+        instance.correspondence_features = state.get("correspondence_features", False)
         instance.standardised_features = state.get("standardised_features", False)
         instance._fitted = True
         return instance
