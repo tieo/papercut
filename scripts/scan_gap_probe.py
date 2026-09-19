@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -34,7 +35,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--documents", type=int, default=20)
-    parser.add_argument("--max-pages", type=int, default=20)
+    parser.add_argument("--max-pages", type=int, default=12)
     parser.add_argument("--streams", type=int, default=200)
     parser.add_argument("--mean-documents", type=float, default=1.5)
     parser.add_argument("--languages", default="deu+eng")
@@ -43,29 +44,50 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _corpus_for(paths: Sequence[Path], languages: str, degrade: bool, max_pages: int):
+def page_count(path: Path) -> int:
+    """Page count read from the PDF itself, so long files are skipped before OCR.
+
+    Reading it after rendering would mean OCR over every page of an archive
+    scan only to drop the document for being too long, which is the difference
+    between a probe that finishes in minutes and one that runs for hours.
+    """
+    completed = subprocess.run(["pdfinfo", str(path)], check=False, capture_output=True, text=True)
+    for line in completed.stdout.splitlines():
+        if line.startswith("Pages:"):
+            return int(line.split()[1])
+    return 0
+
+
+def _corpus_for(
+    paths: Sequence[Path], languages: str, degrade: bool
+) -> tuple[HfPssCorpus, list[tuple[str, tuple[PageRef, ...]]]]:
     texts: dict[PageRef, str] = {}
     layouts: dict[PageRef, list[float]] = {}
     visuals: dict[PageRef, list[float]] = {}
-    documents = []
+    documents: list[tuple[str, tuple[PageRef, ...]]] = []
     for path in paths:
         identifier = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
         parsed = pdf_input(
             path,
             languages=languages,
-            degrade_seed=hash(identifier) % 10_000 if degrade else None,
+            degrade_seed=int(identifier, 16) % 10_000 if degrade else None,
         )
         source_pages = parsed.stream.pages
-        if len(source_pages) > max_pages:
-            continue
-        pages = tuple(PageRef(source=f"probe/{identifier}", page=i) for i in range(len(source_pages)))
+        pages = tuple(
+            PageRef(source=f"probe/{identifier}", page=i) for i in range(len(source_pages))
+        )
         for page, original in zip(pages, source_pages, strict=True):
             texts[page] = parsed.corpus.text(original)
             layouts[page] = parsed.corpus.layout(original)
             visuals[page] = parsed.corpus.visual(original)
         documents.append((f"probe/{identifier}", pages))
+        print(f"  ocr {identifier} {len(pages)} pages", flush=True)
+
     corpus = HfPssCorpus(
-        streams=[Stream(pages=pages, boundaries=(True, *([False] * (len(pages) - 1)))) for _, pages in documents],
+        streams=[
+            Stream(pages=pages, boundaries=(True, *([False] * (len(pages) - 1))))
+            for _, pages in documents
+        ],
         _texts=texts,
         _layouts=layouts,
         _visuals=visuals,
@@ -76,8 +98,7 @@ def _corpus_for(paths: Sequence[Path], languages: str, degrade: bool, max_pages:
 def _score(model_path: Path, corpus: HfPssCorpus) -> dict[str, float]:
     model = TfIdfXgbLayoutSemVis.load_with_corpus(model_path, corpus)
     pairs = [(stream.boundaries, model.predict_boundaries(stream)) for stream in corpus.streams]
-    chars = [len(corpus.text(page)) for stream in corpus.streams for page in stream.pages]
-    chars.sort()
+    chars = sorted(len(corpus.text(page)) for stream in corpus.streams for page in stream.pages)
     return {
         "stp": stp(pairs),
         "page_f1_mean": sum(page_metrics(t, p).f1 for t, p in pairs) / len(pairs),
@@ -88,13 +109,17 @@ def _score(model_path: Path, corpus: HfPssCorpus) -> dict[str, float]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _arguments(argv)
-    paths = sorted(p for p in args.source_dir.rglob("*.pdf"))[: args.documents]
+    candidates = sorted(args.source_dir.rglob("*.pdf"))
+    paths = [path for path in candidates if 0 < page_count(path) <= args.max_pages][
+        : args.documents
+    ]
     if not paths:
-        raise ValueError(f"No PDFs under {args.source_dir}")
+        raise ValueError(f"No PDFs of at most {args.max_pages} pages under {args.source_dir}")
+    print(f"probing {len(paths)} documents of {len(candidates)} candidates", flush=True)
 
-    report = {}
+    report: dict[str, dict[str, float]] = {}
     for label, degrade in (("clean", False), ("scanned", True)):
-        page_corpus, documents = _corpus_for(paths, args.languages, degrade, args.max_pages)
+        page_corpus, documents = _corpus_for(paths, args.languages, degrade)
         composed = corpus_from_documents(
             page_corpus,
             documents,
@@ -105,7 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report[label] = _score(args.model, composed)
         print(label, json.dumps(report[label], sort_keys=True), flush=True)
 
-    print(json.dumps({"model": str(args.model), "documents": len(paths), **report}, indent=2, sort_keys=True))
+    print(json.dumps({"model": str(args.model), "documents": len(paths), **report}, indent=2))
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")

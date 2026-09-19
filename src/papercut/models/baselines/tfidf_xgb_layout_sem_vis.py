@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.sparse import csr_matrix, hstack, vstack
 
+from papercut.data.loaders.tabme_pp import INK_PROFILE_BINS
 from papercut.models.baselines.tfidf_xgb_layout_sem import TfIdfXgbLayoutSem
 from papercut.streams.types import Stream
 
@@ -90,9 +91,29 @@ class TfIdfXgbLayoutSemVis(TfIdfXgbLayoutSem):
         header_cos = region_cosine(8, 11)
         body_cos = region_cosine(11, 14)
         footer_cos = region_cosine(14, 17)
-        vis_block = np.hstack(
-            [legacy_vis_block, header_cos, body_cos, footer_cos]
-        )
+        blocks = [legacy_vis_block, header_cos, body_cos, footer_cos]
+
+        # Corpora built before ink profiles carry 17 visual values per page.
+        # The profiles describe where ink sits rather than how bright the page
+        # is, so their similarity still moves on pages too sparse for text.
+        if vis.shape[1] >= 17 + 2 * INK_PROFILE_BINS:
+            row_start = 17
+            column_start = row_start + INK_PROFILE_BINS
+            column_stop = column_start + INK_PROFILE_BINS
+            row_cos = region_cosine(row_start, column_start)
+            column_cos = region_cosine(column_start, column_stop)
+            row_distance = np.abs(
+                prev_v[:, row_start:column_start] - curr_v[:, row_start:column_start]
+            ).sum(axis=1, keepdims=True)
+            column_distance = np.abs(
+                prev_v[:, column_start:column_stop] - curr_v[:, column_start:column_stop]
+            ).sum(axis=1, keepdims=True)
+            top_band = region_cosine(row_start, row_start + 6)
+            bottom_band = region_cosine(column_start - 6, column_start)
+            blocks.extend(
+                [row_cos, column_cos, row_distance, column_distance, top_band, bottom_band]
+            )
+        vis_block = np.hstack(blocks)
         return hstack([base, csr_matrix(vis_block)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:

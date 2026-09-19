@@ -9,6 +9,8 @@ from papercut.data.loaders.hf import HfPssCorpus
 from papercut.streams.types import PageRef, Stream
 
 TABME_REPO_ID = "rootsautomation/TABMEpp"
+INK_PROFILE_BINS = 32
+
 VISION_FEATURE_NAMES = (
     "aspect_ratio",
     "mean_intensity",
@@ -27,6 +29,8 @@ VISION_FEATURE_NAMES = (
     "intensity_q31",
     "intensity_q32",
     "intensity_q33",
+    *(f"ink_row_{i:02d}" for i in range(INK_PROFILE_BINS)),
+    *(f"ink_column_{i:02d}" for i in range(INK_PROFILE_BINS)),
 )
 
 
@@ -70,7 +74,32 @@ def extract_visual_from_img(img_bytes: bytes | None) -> list[float]:
             for j in range(3):
                 cell = arr[i * 32 : (i + 1) * 32, j * 32 : (j + 1) * 32]
                 grid.append(float(cell.mean()))
-        return [aspect, mean_i, std_i, edge, top, bot, left, right, *grid]
+        # Where ink sits down the page and across it. Intensity statistics of
+        # a mostly white page sit within a percent of each other, so cosines
+        # over them saturate near one and separate nothing. A profile of ink
+        # placement keeps its shape when a page carries three lines, which is
+        # the case where OCR text runs out and a boundary still has to be
+        # called.
+        dense = np.asarray(img.resize((256, 256), Image.BILINEAR), dtype=np.float32) / 255.0
+        threshold = float(np.quantile(dense, 0.2))
+        ink = (dense <= min(0.85, threshold + 0.05)).astype(np.float32)
+        rows = ink.reshape(INK_PROFILE_BINS, -1).mean(axis=1)
+        columns = ink.T.reshape(INK_PROFILE_BINS, -1).mean(axis=1)
+        rows = rows / (rows.sum() + 1e-6)
+        columns = columns / (columns.sum() + 1e-6)
+        return [
+            aspect,
+            mean_i,
+            std_i,
+            edge,
+            top,
+            bot,
+            left,
+            right,
+            *grid,
+            *rows.tolist(),
+            *columns.tolist(),
+        ]
     except Exception:
         return [0.0] * n
 

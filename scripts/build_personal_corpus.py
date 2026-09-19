@@ -161,6 +161,20 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _page_count(path: Path) -> int:
+    """Page count read from the PDF, so long files never reach OCR.
+
+    Documents past the page cap are dropped from the corpus anyway, and
+    reading one of the archive scans costs hundreds of OCR passes to produce
+    a document that is then discarded.
+    """
+    completed = subprocess.run(["pdfinfo", str(path)], check=False, capture_output=True, text=True)
+    for line in completed.stdout.splitlines():
+        if line.startswith("Pages:"):
+            return int(line.split()[1])
+    return 0
+
+
 def _pdfs(roots: Iterable[Path], excluded: set[Path], excluded_dirs: set[Path]) -> list[Path]:
     seen_hashes: set[str] = set()
     result: list[Path] = []
@@ -198,6 +212,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     excluded_dirs = {path.resolve() for path in args.exclude_dir}
     skipped = 0
     source_paths = _pdfs(args.source_dir, excluded=stack_paths, excluded_dirs=excluded_dirs)
+    if args.max_document_pages is not None:
+        source_paths = [
+            path for path in source_paths if 0 < _page_count(path) <= args.max_document_pages
+        ]
+        print(f"OCR queue after the page cap: {len(source_paths)} documents", flush=True)
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(
