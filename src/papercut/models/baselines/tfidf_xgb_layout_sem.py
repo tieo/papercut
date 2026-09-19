@@ -111,7 +111,14 @@ class TfIdfXgbLayoutSem(TfIdfXgbLayout):
         ).astype(np.float32)
 
         cross = np.asarray(
-            [_cross_page_features(texts[i - 1], texts[i]) for i in range(1, n)],
+            [
+                _cross_page_features(
+                    texts[i - 1],
+                    texts[i],
+                    pagination=getattr(self, "pagination_features", False),
+                )
+                for i in range(1, n)
+            ],
             dtype=np.float32,
         )
 

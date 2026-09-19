@@ -19,6 +19,47 @@ from papercut.streams.types import PageRef, Stream
 Document = tuple[str, tuple[PageRef, ...]]
 
 
+def _char_ngrams(text: str, n: int = 4) -> set[str]:
+    cleaned = " ".join(text.lower().split())
+    return {cleaned[i : i + n] for i in range(max(0, len(cleaned) - n + 1))}
+
+
+def cluster_documents(
+    corpus: HfPssCorpus,
+    documents: Sequence[Document],
+    threshold: float = 0.25,
+    head: int = 600,
+) -> list[list[Document]]:
+    """Group documents whose first page looks like the same sender.
+
+    A scanner stack is what arrived in one batch, so it carries runs of
+    near-identical documents: three invoices from one provider, a statement
+    series, a form sent twice. Sampling documents uniformly never builds that
+    case, and it is the case where letterhead similarity argues for "same
+    document" exactly when a new one starts. Grouping on the opening of the
+    first page is enough to recreate those runs.
+    """
+    signatures = [
+        (document, _char_ngrams(corpus.text(pages[0])[:head]))
+        for document, pages in ((doc, doc[1]) for doc in documents)
+    ]
+    clusters: list[list[Document]] = []
+    centroids: list[set[str]] = []
+    for document, signature in signatures:
+        placed = False
+        for index, centroid in enumerate(centroids):
+            union = len(signature | centroid)
+            score = len(signature & centroid) / union if union else 0.0
+            if score >= threshold:
+                clusters[index].append(document)
+                placed = True
+                break
+        if not placed:
+            clusters.append([document])
+            centroids.append(signature)
+    return clusters
+
+
 def documents_from_corpus(corpus: HfPssCorpus) -> list[Document]:
     """Recover the distinct documents behind a corpus, pages in reading order.
 
@@ -61,17 +102,32 @@ def corpus_from_documents(
     n_streams: int,
     mean_documents_per_stream: float,
     seed: int = 0,
+    same_sender_probability: float = 0.0,
+    cluster_threshold: float = 0.25,
 ) -> HfPssCorpus:
-    """Sample streams over a chosen set of the corpus documents."""
+    """Sample streams over a chosen set of the corpus documents.
+
+    `same_sender_probability` draws that share of streams from one cluster of
+    look-alike documents, which is what a batch of mail from one provider
+    looks like coming off the feeder.
+    """
     if not documents:
         raise ValueError("No documents to compose streams from")
     rng = random.Random(seed)
+    clusters = (
+        [group for group in cluster_documents(corpus, documents, cluster_threshold) if len(group) > 1]
+        if same_sender_probability > 0
+        else []
+    )
     streams: list[Stream] = []
     for _ in range(n_streams):
-        count = min(len(documents), max(1, poisson(rng, mean_documents_per_stream)))
+        pool = list(documents)
+        if clusters and rng.random() < same_sender_probability:
+            pool = list(rng.choice(clusters))
+        count = min(len(pool), max(1, poisson(rng, mean_documents_per_stream)))
         pages: list[PageRef] = []
         boundaries: list[bool] = []
-        for _, document_pages in rng.sample(list(documents), k=count):
+        for _, document_pages in rng.sample(pool, k=count):
             pages.extend(document_pages)
             boundaries.extend([True, *([False] * (len(document_pages) - 1))])
         streams.append(Stream(pages=tuple(pages), boundaries=tuple(boundaries)))
@@ -92,6 +148,7 @@ def compose_corpus(
     mean_documents_per_stream: float,
     max_document_pages: int | None = None,
     seed: int = 0,
+    same_sender_probability: float = 0.0,
 ) -> HfPssCorpus:
     """Resample streams over the corpus documents, keeping page features.
 
@@ -112,6 +169,7 @@ def compose_corpus(
         n_streams=n_streams,
         mean_documents_per_stream=mean_documents_per_stream,
         seed=seed,
+        same_sender_probability=same_sender_probability,
     )
 
 

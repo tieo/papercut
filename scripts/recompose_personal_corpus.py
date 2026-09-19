@@ -33,6 +33,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--streams", type=int, default=1500)
     parser.add_argument("--mean-documents", type=float, default=1.5)
     parser.add_argument("--max-document-pages", type=int, default=20)
+    parser.add_argument("--same-sender", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args(argv)
 
@@ -61,6 +62,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         mean_documents_per_stream=args.mean_documents,
         max_document_pages=args.max_document_pages,
         seed=args.seed,
+        same_sender_probability=args.same_sender,
     )
     _describe("kept", documents_from_corpus(composed))
 

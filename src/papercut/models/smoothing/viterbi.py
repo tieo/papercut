@@ -27,6 +27,18 @@ class SequenceSmoothed:
     new_to_new: float = 0.05
 
     def fit(self, streams: list[Stream]) -> None:
+        self.fit_transitions(streams)
+        if callable(getattr(self.submodel, "fit", None)):
+            self.submodel.fit(streams)  # type: ignore[attr-defined]
+
+    def fit_transitions(self, streams: Sequence[Stream]) -> None:
+        """Estimate the boundary rate and transitions, leaving the submodel alone.
+
+        A trained submodel loaded from disk resolves its pages through the
+        corpus it was handed, so refitting it against another corpus is both
+        wasted work and a lookup into pages that corpus does not hold. The
+        decoder only needs label statistics, which come from the labels.
+        """
         n_boundaries = 0
         n_positions = 0
         n_same_to_new = 0
@@ -59,8 +71,6 @@ class SequenceSmoothed:
             self.same_to_new = max(_EPS, min(1 - _EPS, n_same_to_new / same_total))
         if new_total:
             self.new_to_new = max(_EPS, min(1 - _EPS, n_new_to_new / new_total))
-        if callable(getattr(self.submodel, "fit", None)):
-            self.submodel.fit(streams)  # type: ignore[attr-defined]
 
     def predict_probs(self, stream: Stream) -> tuple[float, ...]:
         return self.submodel.predict_probs(stream)

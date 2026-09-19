@@ -101,10 +101,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         label.append("gated")
     if args.viterbi:
         smoothed = SequenceSmoothed(submodel=model)
-        if args.train is not None:
-            smoothed.fit(HfPssCorpus.load_from_disk(args.train).streams)
-        else:
-            smoothed.fit(test.streams)
+        source = HfPssCorpus.load_from_disk(args.train).streams if args.train else test.streams
+        smoothed.fit_transitions(source)
         model = smoothed
         label.append("viterbi")
 

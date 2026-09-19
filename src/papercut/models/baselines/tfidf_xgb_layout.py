@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -49,7 +50,50 @@ def _digit_run_count(text: str) -> int:
     return count
 
 
-def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300) -> list[float]:
+_PAGINATION = re.compile(r"\b(\d{1,3})\s*(?:[/|-]|[^\W\d_]{1,12}\s)\s*(\d{1,3})\b")
+
+
+def _pagination(text: str, window: int = 400) -> tuple[bool, int, int]:
+    """Read a "page k of n" mark off the head and foot of a page.
+
+    Printed pagination is the one place a document states its own extent, and
+    an invoice run from one sender is where every other cue fails: the
+    letterhead, the layout and the wording repeat, while the count restarts.
+    The pattern is numeric, a pair of small numbers joined by a separator or a
+    short word, so it reads "1/2", "1 of 2" and "Seite 1 von 2" alike without
+    naming a language. The last plausible pair wins, since a page number sits
+    at the end of a header or footer line.
+    """
+    best: tuple[int, int] | None = None
+    for part in (text[:window], text[-window:]):
+        for match in _PAGINATION.finditer(part):
+            index, total = int(match.group(1)), int(match.group(2))
+            if 1 <= index <= total <= 99:
+                best = (index, total)
+    if best is None:
+        return False, 0, 0
+    return True, best[0], best[1]
+
+
+def _pagination_pair_features(prev: str, curr: str) -> list[float]:
+    """Compare the pagination of two pages, zeros when either lacks one."""
+    prev_found, prev_index, prev_total = _pagination(prev)
+    curr_found, curr_index, curr_total = _pagination(curr)
+    if not (prev_found and curr_found):
+        return [float(prev_found), float(curr_found), 0.0, 0.0, 0.0, 0.0]
+    return [
+        float(prev_found),
+        float(curr_found),
+        float(prev_total == curr_total),
+        float(curr_index == prev_index + 1 and prev_total == curr_total),
+        float(curr_index == 1 and prev_index > 1),
+        float(prev_index == prev_total and curr_index == 1),
+    ]
+
+
+def _cross_page_features(
+    prev: str, curr: str, head: int = 300, foot: int = 300, pagination: bool = False
+) -> list[float]:
     """Language-agnostic similarity signals between consecutive pages.
 
     Multi-scale head and tail similarity catches shared letterheads and
@@ -93,6 +137,7 @@ def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300)
     prev_digits = _digit_run_count(foot_chars(prev, foot))
     curr_digits = _digit_run_count(foot_chars(curr, foot))
 
+    extra = _pagination_pair_features(prev, curr) if pagination else []
     return [
         *multi_head,
         *multi_foot,
@@ -105,6 +150,7 @@ def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300)
         float(prev_digits),
         float(curr_digits),
         float(abs(prev_digits - curr_digits)),
+        *extra,
     ]
 
 
@@ -169,11 +215,13 @@ class TfIdfXgbLayout:
         random_state: int = 0,
         analyzer: str = "word",
         context_features: bool = True,
+        pagination_features: bool = True,
     ) -> None:
         self.corpus = corpus
         self.max_chars_per_page = max_chars_per_page
         self.threshold = threshold
         self.context_features = context_features
+        self.pagination_features = pagination_features
         self.vectorizer = TfidfVectorizer(
             analyzer=analyzer,
             ngram_range=ngram_range,
@@ -247,7 +295,12 @@ class TfIdfXgbLayout:
         ).astype(np.float32)
 
         cross = np.asarray(
-            [_cross_page_features(texts[i - 1], texts[i]) for i in range(1, n)],
+            [
+                _cross_page_features(
+                    texts[i - 1], texts[i], pagination=self.pagination_features
+                )
+                for i in range(1, n)
+            ],
             dtype=np.float32,
         )
 
@@ -308,6 +361,7 @@ class TfIdfXgbLayout:
             "max_chars_per_page": self.max_chars_per_page,
             "threshold": self.threshold,
             "context_features": self.context_features,
+            "pagination_features": self.pagination_features,
             "model_class": "TfIdfXgbLayout",
         }
         with target.open("wb") as f:
@@ -326,5 +380,6 @@ class TfIdfXgbLayout:
         # Models fitted before stream context existed carry the narrower
         # feature layout, so the absent key means those columns stay off.
         instance.context_features = state.get("context_features", False)
+        instance.pagination_features = state.get("pagination_features", False)
         instance._fitted = True
         return instance
