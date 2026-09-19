@@ -109,6 +109,8 @@ def _ocr_tsv(image: Path, tesseract: str, languages: str) -> str:
     return completed.stdout
 
 
+_SPARSE_PAGE_CHARS = 200
+
 _ROTATION = re.compile(r"^Rotate:\s*(\d+)", re.MULTILINE)
 
 
@@ -134,6 +136,18 @@ def detect_rotation(image: Path, tesseract: str) -> int:
     if match is None:
         return 0
     return int(match.group(1)) % 360
+
+
+def _word_score(text: str) -> int:
+    """Count characters sitting in word-like runs, as a readability proxy.
+
+    Orientation detection needs a certain amount of script and gives up on a
+    sparse page, which is exactly the duplex backside carrying two lines. Text
+    read upside down still returns characters, but they scatter into short
+    fragments, so the longer the runs of letters, the more likely the page is
+    the right way up. This needs no dictionary and so no language.
+    """
+    return sum(len(token) for token in re.findall(r"[^\W\d_]{3,}", text))
 
 
 def pdf_input(
@@ -174,6 +188,24 @@ def pdf_input(
                 text, layout = parse_tesseract_tsv(
                     _ocr_tsv(image_path, tesseract, languages), *image.size
                 )
+            if rotation == 0 and 0 < _word_score(text) < _SPARSE_PAGE_CHARS:
+                # A page too sparse for orientation detection can still be
+                # upside down, which a feeder produces on every backside of a
+                # double-sided pass. Reading it both ways costs one more pass
+                # on the few pages that carry almost no text.
+                with Image.open(image_path) as image:
+                    flipped_path = image_path.with_name(f"flipped-{image_path.name}")
+                    image.rotate(180, expand=True).save(flipped_path)
+                with Image.open(flipped_path) as flipped:
+                    flipped_text, flipped_layout = parse_tesseract_tsv(
+                        _ocr_tsv(flipped_path, tesseract, languages), *flipped.size
+                    )
+                if _word_score(flipped_text) > _word_score(text):
+                    image_path.unlink()
+                    flipped_path.rename(image_path)
+                    text, layout = flipped_text, flipped_layout
+                else:
+                    flipped_path.unlink()
             page = PageRef(source=source, page=index)
             pages.append(page)
             texts[page] = text

@@ -54,3 +54,18 @@ def test_detect_rotation_falls_back_when_osd_fails(monkeypatch) -> None:
 
     monkeypatch.setattr(module.subprocess, "run", failing_run)
     assert module.detect_rotation(Path("blank.png"), "tesseract") == 0
+
+
+def test_word_score_prefers_readable_text() -> None:
+    from papercut.serve.pdf_input import _word_score
+
+    upright = "Rollladenbänder und Abdeckungen wurden gestrichen"
+    inverted = "M Y R D L g A 27T RA | Z l a A DU o2 DE"
+    assert _word_score(upright) > _word_score(inverted)
+
+
+def test_word_score_ignores_digits_and_short_fragments() -> None:
+    from papercut.serve.pdf_input import _word_score
+
+    assert _word_score("12 3456 7 ab c d") == 0
+    assert _word_score("Rechnung") == 8

@@ -8,6 +8,7 @@ from scipy.sparse import csr_matrix, hstack
 from papercut.models.baselines.tfidf_xgb_layout import (
     TfIdfXgbLayout,
     _cross_page_features,
+    _stream_context_features,
 )
 from papercut.models.baselines.tfidf_xgb_rich import _page_features
 
@@ -127,7 +128,10 @@ class TfIdfXgbLayoutSem(TfIdfXgbLayout):
         embeds = embeds / norms
         cos = np.sum(embeds[:-1] * embeds[1:], axis=1, dtype=np.float32).reshape(-1, 1)
 
-        dense = np.hstack([struct_pairs, layout_pairs, pos_pairs, cross, cos])
+        blocks = [struct_pairs, layout_pairs, pos_pairs, cross, cos]
+        if getattr(self, "context_features", False):
+            blocks.insert(4, _stream_context_features(cross))
+        dense = np.hstack(blocks)
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
 
     @classmethod
