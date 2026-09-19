@@ -105,10 +105,19 @@ def test_adaptive_trusts_a_confident_single_document_stream() -> None:
     assert model.predict_boundaries(stream) == (True, False, False, False, False)
 
 
-def test_adaptive_falls_back_when_scores_are_packed_together() -> None:
+def test_adaptive_falls_back_when_high_scores_are_packed_together() -> None:
+    from papercut.models.smoothing.rank_decode import AdaptiveDecode
+
+    stream = _stream("s", 5)
+    model = AdaptiveDecode(submodel=FixedProbs({"s": (1.0, 0.960, 0.961, 0.962, 0.990)}))
+    assert model.used_ranking(stream) is True
+    assert model.predict_boundaries(stream)[4] is True
+
+
+def test_adaptive_keeps_a_narrow_band_of_low_scores() -> None:
     from papercut.models.smoothing.rank_decode import AdaptiveDecode
 
     stream = _stream("s", 5)
     model = AdaptiveDecode(submodel=FixedProbs({"s": (1.0, 0.010, 0.011, 0.012, 0.040)}))
-    assert model.used_ranking(stream) is True
-    assert model.predict_boundaries(stream)[4] is True
+    assert model.used_ranking(stream) is False
+    assert model.predict_boundaries(stream) == (True, False, False, False, False)

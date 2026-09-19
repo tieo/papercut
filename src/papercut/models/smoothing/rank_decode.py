@@ -161,5 +161,10 @@ class AdaptiveDecode:
 
     def _degenerate(self, probs: Sequence[float]) -> bool:
         share = sum(p > self.threshold for p in probs) / len(probs)
+        if share > self.crowded_share:
+            return True
+        # A narrow band only means lost scale when it sits high. The same
+        # narrowness down at a hundredth is a stream of pages the model is
+        # confidently continuing, which is what a single document looks like.
         spread = max(probs) - min(probs)
-        return share > self.crowded_share or spread < self.minimum_spread
+        return spread < self.minimum_spread and max(probs) > self.threshold
