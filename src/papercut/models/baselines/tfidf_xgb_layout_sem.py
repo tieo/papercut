@@ -9,6 +9,7 @@ from papercut.models.baselines.tfidf_xgb_layout import (
     TfIdfXgbLayout,
     _cross_page_features,
     _stream_context_features,
+    standardise_within_stream,
 )
 from papercut.models.baselines.tfidf_xgb_rich import _page_features
 
@@ -131,6 +132,8 @@ class TfIdfXgbLayoutSem(TfIdfXgbLayout):
         blocks = [struct_pairs, layout_pairs, pos_pairs, cross, cos]
         if getattr(self, "context_features", False):
             blocks.insert(4, _stream_context_features(cross))
+        if getattr(self, "standardised_features", False):
+            blocks.append(standardise_within_stream(np.hstack([cross, cos])))
         dense = np.hstack(blocks)
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
 

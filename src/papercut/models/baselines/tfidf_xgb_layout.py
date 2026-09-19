@@ -154,6 +154,26 @@ def _cross_page_features(
     ]
 
 
+def standardise_within_stream(block: np.ndarray) -> np.ndarray:
+    """Restate each column as standard deviations from this stream's mean.
+
+    Absolute similarity carries a scale that belongs to the corpus a model was
+    fitted on: a text overlap of 0.4 separates documents in a stack of dense
+    letters and holds one together in a stack of sparse forms, and a model
+    taught the absolute number learns the wrong rule for the second stack.
+    The standing of a pair among its own stream's pairs survives that change,
+    since it is measured against the stack it came from.
+
+    A stream of one pair has nothing to compare against and comes back as
+    zeros, which says exactly that.
+    """
+    if block.shape[0] < 2:
+        return np.zeros_like(block, dtype=np.float32)
+    mean = block.mean(axis=0, keepdims=True)
+    deviation = block.std(axis=0, keepdims=True)
+    return ((block - mean) / (deviation + 1e-6)).astype(np.float32)
+
+
 def _stream_context_features(cross: np.ndarray) -> np.ndarray:
     """Place each page pair against the rest of its stream.
 
@@ -216,12 +236,14 @@ class TfIdfXgbLayout:
         analyzer: str = "word",
         context_features: bool = True,
         pagination_features: bool = True,
+        standardised_features: bool = True,
     ) -> None:
         self.corpus = corpus
         self.max_chars_per_page = max_chars_per_page
         self.threshold = threshold
         self.context_features = context_features
         self.pagination_features = pagination_features
+        self.standardised_features = standardised_features
         self.vectorizer = TfidfVectorizer(
             analyzer=analyzer,
             ngram_range=ngram_range,
@@ -362,6 +384,7 @@ class TfIdfXgbLayout:
             "threshold": self.threshold,
             "context_features": self.context_features,
             "pagination_features": self.pagination_features,
+            "standardised_features": self.standardised_features,
             "model_class": "TfIdfXgbLayout",
         }
         with target.open("wb") as f:
@@ -381,5 +404,6 @@ class TfIdfXgbLayout:
         # feature layout, so the absent key means those columns stay off.
         instance.context_features = state.get("context_features", False)
         instance.pagination_features = state.get("pagination_features", False)
+        instance.standardised_features = state.get("standardised_features", False)
         instance._fitted = True
         return instance
