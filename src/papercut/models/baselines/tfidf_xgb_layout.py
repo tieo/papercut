@@ -108,6 +108,34 @@ def _cross_page_features(prev: str, curr: str, head: int = 300, foot: int = 300)
     ]
 
 
+def _stream_context_features(cross: np.ndarray) -> np.ndarray:
+    """Place each page pair against the rest of its stream.
+
+    A whole scan is available at once, so a pair is judged against its
+    neighbours rather than on its own: the similarity that marks a document
+    start in a stack of dense reports can be ordinary inside a stack of
+    sparse forms. Each pair carries the preceding and following pair, the
+    difference to both, and its distance from the stream mean in standard
+    deviations, which is what makes a dip in similarity readable as a
+    boundary.
+    """
+    if cross.size == 0:
+        return np.zeros((cross.shape[0], 0), dtype=np.float32)
+    previous = np.vstack([cross[:1], cross[:-1]])
+    following = np.vstack([cross[1:], cross[-1:]])
+    mean = cross.mean(axis=0, keepdims=True)
+    deviation = cross.std(axis=0, keepdims=True) + 1e-6
+    return np.hstack(
+        [
+            previous,
+            following,
+            cross - previous,
+            cross - following,
+            (cross - mean) / deviation,
+        ]
+    ).astype(np.float32)
+
+
 if TYPE_CHECKING:
     from papercut.data.loaders.hf import HfPssCorpus
 
@@ -140,10 +168,12 @@ class TfIdfXgbLayout:
         threshold: float = 0.5,
         random_state: int = 0,
         analyzer: str = "word",
+        context_features: bool = True,
     ) -> None:
         self.corpus = corpus
         self.max_chars_per_page = max_chars_per_page
         self.threshold = threshold
+        self.context_features = context_features
         self.vectorizer = TfidfVectorizer(
             analyzer=analyzer,
             ngram_range=ngram_range,
@@ -221,7 +251,10 @@ class TfIdfXgbLayout:
             dtype=np.float32,
         )
 
-        dense = np.hstack([struct_pairs, layout_pairs, layout_cos, pos_pairs, cross])
+        blocks = [struct_pairs, layout_pairs, layout_cos, pos_pairs, cross]
+        if self.context_features:
+            blocks.append(_stream_context_features(cross))
+        dense = np.hstack(blocks)
         return hstack([prev_tf, curr_tf, csr_matrix(dense)]).tocsr()
 
     def fit(self, streams: Sequence[Stream]) -> None:
@@ -274,6 +307,7 @@ class TfIdfXgbLayout:
             "model": self.model,
             "max_chars_per_page": self.max_chars_per_page,
             "threshold": self.threshold,
+            "context_features": self.context_features,
             "model_class": "TfIdfXgbLayout",
         }
         with target.open("wb") as f:
@@ -289,5 +323,8 @@ class TfIdfXgbLayout:
         instance.model = state["model"]
         instance.max_chars_per_page = state["max_chars_per_page"]
         instance.threshold = state.get("threshold", 0.5)
+        # Models fitted before stream context existed carry the narrower
+        # feature layout, so the absent key means those columns stay off.
+        instance.context_features = state.get("context_features", False)
         instance._fitted = True
         return instance
