@@ -70,3 +70,45 @@ def test_expected_count_always_opens_the_first_page() -> None:
     stream = _stream("s", 3)
     model = ExpectedCount(submodel=FixedProbs({"s": (0.0, 0.0, 0.0)}), pages_per_document=99.0)
     assert model.predict_boundaries(stream)[0] is True
+
+
+def test_adaptive_keeps_the_threshold_when_it_discriminates() -> None:
+    from papercut.models.smoothing.rank_decode import AdaptiveDecode
+
+    stream = _stream("s", 6)
+    model = AdaptiveDecode(submodel=FixedProbs({"s": (1.0, 0.1, 0.9, 0.05, 0.02, 0.03)}))
+    assert model.used_ranking(stream) is False
+    assert model.predict_boundaries(stream) == (True, False, True, False, False, False)
+
+
+def test_adaptive_falls_back_to_ranking_when_every_page_clears_the_cut() -> None:
+    from papercut.models.smoothing.rank_decode import AdaptiveDecode
+
+    stream = _stream("s", 5)
+    model = AdaptiveDecode(
+        submodel=FixedProbs({"s": (1.0, 0.99, 0.999, 0.98, 0.9999)}), rank_quantile=0.75
+    )
+    assert model.used_ranking(stream) is True
+    predicted = model.predict_boundaries(stream)
+    assert sum(predicted) < 5
+
+
+
+
+
+def test_adaptive_trusts_a_confident_single_document_stream() -> None:
+    from papercut.models.smoothing.rank_decode import AdaptiveDecode
+
+    stream = _stream("s", 5)
+    model = AdaptiveDecode(submodel=FixedProbs({"s": (1.0, 0.02, 0.31, 0.05, 0.08)}))
+    assert model.used_ranking(stream) is False
+    assert model.predict_boundaries(stream) == (True, False, False, False, False)
+
+
+def test_adaptive_falls_back_when_scores_are_packed_together() -> None:
+    from papercut.models.smoothing.rank_decode import AdaptiveDecode
+
+    stream = _stream("s", 5)
+    model = AdaptiveDecode(submodel=FixedProbs({"s": (1.0, 0.010, 0.011, 0.012, 0.040)}))
+    assert model.used_ranking(stream) is True
+    assert model.predict_boundaries(stream)[4] is True

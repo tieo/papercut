@@ -107,3 +107,59 @@ class ExpectedCount:
         chosen = sorted(range(1, pages), key=lambda i: -probs[i])[:extra]
         picked = set(chosen)
         return (True, *(i in picked for i in range(1, pages)))
+
+
+@dataclass
+class AdaptiveDecode:
+    """Use the threshold while it discriminates, the ranking once it stops.
+
+    An absolute cut is the better rule on the distribution a model was fitted
+    to, and it collapses on another one, where the scores crowd together and
+    the cut lands above or below all of them. Ranking is the reverse: robust
+    to that crowding, and wasteful on a stream holding one document, since it
+    always opens a fixed share of the pages.
+
+    Two symptoms mark the second case. Most pages clearing the cut says the
+    scores have drifted upward wholesale, since a stack where four pages in
+    five open a document does not exist. Scores packed into a narrow band says
+    the model is answering the same thing everywhere and the cut lands on one
+    side of all of them. A stream where no page clears a well spread set of
+    scores is not a symptom at all: it is a single document, and the threshold
+    is right about it.
+    """
+
+    submodel: ProbabilisticModel
+    threshold: float = 0.5
+    rank_quantile: float = 0.75
+    crowded_share: float = 0.6
+    minimum_spread: float = 0.05
+    name: str = field(default="adaptive")
+
+    def fit(self, streams: Sequence[Stream]) -> None:
+        if callable(getattr(self.submodel, "fit", None)):
+            self.submodel.fit(streams)  # type: ignore[attr-defined]
+
+    def predict_probs(self, stream: Stream) -> tuple[float, ...]:
+        return self.submodel.predict_probs(stream)
+
+    def used_ranking(self, stream: Stream) -> bool:
+        """Whether this stream falls back to the ranking, for reporting."""
+        probs = self.predict_probs(stream)[1:]
+        if not probs:
+            return False
+        return self._degenerate(probs)
+
+    def predict_boundaries(self, stream: Stream) -> tuple[bool, ...]:
+        probs = self.predict_probs(stream)
+        rest = probs[1:]
+        if not rest:
+            return (True,)
+        if not self._degenerate(rest):
+            return (True, *(p > self.threshold for p in rest))
+        ranks = rank_quantiles(rest)
+        return (True, *(r >= self.rank_quantile for r in ranks))
+
+    def _degenerate(self, probs: Sequence[float]) -> bool:
+        share = sum(p > self.threshold for p in probs) / len(probs)
+        spread = max(probs) - min(probs)
+        return share > self.crowded_share or spread < self.minimum_spread

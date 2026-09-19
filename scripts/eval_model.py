@@ -27,7 +27,7 @@ from papercut.data.loaders.hf import HfPssCorpus
 from papercut.eval.metrics import mndd, page_metrics, panoptic_quality, stp
 from papercut.models.baselines.tfidf_xgb_layout_sem_vis import TfIdfXgbLayoutSemVis
 from papercut.models.smoothing.blank_gate import BlankPageGated
-from papercut.models.smoothing.rank_decode import ExpectedCount, RankNormalized
+from papercut.models.smoothing.rank_decode import AdaptiveDecode, ExpectedCount, RankNormalized
 from papercut.models.smoothing.viterbi import SequenceSmoothed
 from papercut.streams.types import Stream
 
@@ -40,6 +40,11 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--gated", action="store_true", help="Wrap in the blank-page gate.")
     parser.add_argument("--viterbi", action="store_true", help="Decode with the 2-state HMM.")
     parser.add_argument("--rank", action="store_true", help="Threshold on rank within the stream.")
+    parser.add_argument(
+        "--adaptive",
+        action="store_true",
+        help="Threshold while it discriminates, rank within the stream once it stops.",
+    )
     parser.add_argument(
         "--expected-count",
         action="store_true",
@@ -106,6 +111,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.gated:
         model = BlankPageGated(submodel=model, corpus=test)
         label.append("gated")
+    if args.adaptive:
+        model = AdaptiveDecode(submodel=model, threshold=args.threshold or 0.5)
+        label.append("adaptive")
     if args.rank:
         model = RankNormalized(submodel=model, threshold=args.threshold or 0.75)
         label.append("rank")
