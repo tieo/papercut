@@ -71,6 +71,11 @@ def _cmd_serve_split_pdf(args: argparse.Namespace) -> int:
         f"Split {len(report.boundaries)} pages into {len(report.outputs)} documents "
         f"and removed {sum(report.blank_pages)} blank pages."
     )
+    if report.ranked:
+        print(
+            "Scores carried no usable scale on this stack, so boundaries came from "
+            "their ranking within it. Check the split before filing."
+        )
     for output in report.outputs:
         source_pages = ", ".join(str(index + 1) for index in output.source_page_indices)
         print(f"{output.path}: source pages {source_pages}")
