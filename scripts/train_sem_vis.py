@@ -45,6 +45,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--colsample-bytree", type=float, default=1.0)
     parser.add_argument("--max-bin", type=int, default=256)
     parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument(
+        "--standardised-features",
+        action="store_true",
+        help="Add similarity features restated as standard deviations within their stream.",
+    )
     return parser.parse_args(argv)
 
 
@@ -98,6 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         colsample_bytree=args.colsample_bytree,
         max_bin=args.max_bin,
         threshold=args.threshold,
+        standardised_features=args.standardised_features,
     )
     model.fit(corpus.streams[:n_train_streams])
     print("Evaluating holdout", flush=True)

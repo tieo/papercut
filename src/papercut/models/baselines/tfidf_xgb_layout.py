@@ -236,7 +236,7 @@ class TfIdfXgbLayout:
         analyzer: str = "word",
         context_features: bool = True,
         pagination_features: bool = True,
-        standardised_features: bool = True,
+        standardised_features: bool = False,
     ) -> None:
         self.corpus = corpus
         self.max_chars_per_page = max_chars_per_page
