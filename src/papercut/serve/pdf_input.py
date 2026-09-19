@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -108,6 +109,33 @@ def _ocr_tsv(image: Path, tesseract: str, languages: str) -> str:
     return completed.stdout
 
 
+_ROTATION = re.compile(r"^Rotate:\s*(\d+)", re.MULTILINE)
+
+
+def detect_rotation(image: Path, tesseract: str) -> int:
+    """Degrees the page must turn clockwise to stand upright, 0 if unknown.
+
+    A feeder takes pages in whatever way they were put in, and a duplex pass
+    turns every backside upside down. Tesseract reads a page the way it finds
+    it, so an inverted page yields character soup that looks like text to
+    everything downstream. Orientation detection needs a certain amount of
+    script on the page and exits non-zero when it finds too little, which is
+    the blank and near-blank case and leaves the page as it is.
+    """
+    completed = subprocess.run(
+        [tesseract, str(image), "-", "--psm", "0", "osd"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return 0
+    match = _ROTATION.search(completed.stdout)
+    if match is None:
+        return 0
+    return int(match.group(1)) % 360
+
+
 def pdf_input(
     input_pdf: Path,
     *,
@@ -135,6 +163,13 @@ def pdf_input(
         visuals: dict[PageRef, list[float]] = {}
         source = f"pdf/{input_pdf.name}"
         for index, image_path in enumerate(images):
+            rotation = detect_rotation(image_path, tesseract)
+            if rotation:
+                # Layout boxes and the visual summary have to describe the same
+                # upright page the text came from, so the rotation happens once
+                # here and every feature is read off the turned image.
+                with Image.open(image_path) as image:
+                    image.rotate(-rotation, expand=True).save(image_path)
             with Image.open(image_path) as image:
                 text, layout = parse_tesseract_tsv(
                     _ocr_tsv(image_path, tesseract, languages), *image.size

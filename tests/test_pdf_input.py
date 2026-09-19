@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pytest
 
@@ -28,3 +29,28 @@ def test_parse_tesseract_tsv_uses_normalized_word_boxes() -> None:
 def test_parse_tesseract_tsv_rejects_invalid_image_dimensions() -> None:
     with pytest.raises(ValueError, match="dimensions"):
         parse_tesseract_tsv("", image_width=0, image_height=100)
+
+
+def test_detect_rotation_reads_the_osd_angle(monkeypatch) -> None:
+    import subprocess
+
+    from papercut.serve import pdf_input as module
+
+    def fake_run(args, **kwargs):
+        assert "--psm" in args and args[args.index("--psm") + 1] == "0"
+        return subprocess.CompletedProcess(args, 0, stdout="Page number: 0\nRotate: 180\n", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    assert module.detect_rotation(Path("page.png"), "tesseract") == 180
+
+
+def test_detect_rotation_falls_back_when_osd_fails(monkeypatch) -> None:
+    import subprocess
+
+    from papercut.serve import pdf_input as module
+
+    def failing_run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="Too few characters")
+
+    monkeypatch.setattr(module.subprocess, "run", failing_run)
+    assert module.detect_rotation(Path("blank.png"), "tesseract") == 0
