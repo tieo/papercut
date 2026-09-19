@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
+import random
 import re
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from papercut.data.loaders.hf import HfPssCorpus
 from papercut.data.loaders.tabme_pp import (
@@ -18,6 +21,9 @@ from papercut.data.loaders.tabme_pp import (
     extract_visual_from_img,
 )
 from papercut.streams.types import PageRef, Stream
+
+if TYPE_CHECKING:
+    from PIL.Image import Image as PILImage
 
 
 @dataclass(frozen=True)
@@ -138,6 +144,34 @@ def detect_rotation(image: Path, tesseract: str) -> int:
     return int(match.group(1)) % 360
 
 
+def degrade_scan(image: PILImage, seed: int) -> PILImage:
+    """Make a crisp render look like it came off a feeder.
+
+    A PDF that carries its own text layer renders to clean glyphs, and OCR
+    reads it almost perfectly. Paper through a scanner arrives skewed by a
+    fraction of a degree, softened by the optics, speckled by the sensor and
+    squeezed by JPEG, which is why a model trained on renders meets a
+    different distribution the day it sees a real stack. The transforms are
+    deliberately mild: this is the same page, scanned, not a harder page.
+    """
+    from PIL import Image, ImageFilter
+
+    rng = random.Random(seed)
+    angle = rng.uniform(-1.2, 1.2)
+    turned = image.convert("L").rotate(angle, resample=Image.BILINEAR, expand=False, fillcolor=255)
+    blurred = turned.filter(ImageFilter.GaussianBlur(radius=rng.uniform(0.3, 0.9)))
+    pixels = blurred.load()
+    width, height = blurred.size
+    for _ in range(int(width * height * rng.uniform(0.001, 0.004))):
+        x, y = rng.randrange(width), rng.randrange(height)
+        pixels[x, y] = 0 if rng.random() < 0.5 else 255
+    buffer = io.BytesIO()
+    blurred.save(buffer, format="JPEG", quality=rng.randint(45, 75))
+    buffer.seek(0)
+    with Image.open(buffer) as compressed:
+        return compressed.convert("L").copy()
+
+
 def _word_score(text: str) -> int:
     """Count characters sitting in word-like runs, as a readability proxy.
 
@@ -157,8 +191,14 @@ def pdf_input(
     dpi: int = 200,
     pdftoppm_path: str | None = None,
     tesseract_path: str | None = None,
+    degrade_seed: int | None = None,
 ) -> PdfInput:
-    """Render and OCR a PDF without retaining intermediate images on disk."""
+    """Render and OCR a PDF without retaining intermediate images on disk.
+
+    `degrade_seed` runs each rendered page through `degrade_scan` first, which
+    turns a clean render into something shaped like a scan. It exists to build
+    training pages that match what a feeder delivers.
+    """
     if dpi <= 0:
         raise ValueError("dpi must be positive")
     pdftoppm = _binary(pdftoppm_path, "pdftoppm")
@@ -177,6 +217,9 @@ def pdf_input(
         visuals: dict[PageRef, list[float]] = {}
         source = f"pdf/{input_pdf.name}"
         for index, image_path in enumerate(images):
+            if degrade_seed is not None:
+                with Image.open(image_path) as rendered:
+                    degrade_scan(rendered, degrade_seed + index).save(image_path)
             rotation = detect_rotation(image_path, tesseract)
             if rotation:
                 # Layout boxes and the visual summary have to describe the same
