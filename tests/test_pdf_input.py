@@ -69,3 +69,16 @@ def test_word_score_ignores_digits_and_short_fragments() -> None:
 
     assert _word_score("12 3456 7 ab c d") == 0
     assert _word_score("Rechnung") == 8
+
+
+def test_a_quote_in_a_word_does_not_swallow_the_columns() -> None:
+    header = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext"
+    rows = [
+        header,
+        '5\t1\t1\t1\t1\t1\t10\t10\t40\t12\t96\tPostfach"',
+        "5\t1\t1\t1\t1\t2\t60\t10\t40\t12\t96\tEhingen",
+    ]
+    text, _ = parse_tesseract_tsv("\n".join(rows), 100, 100)
+    assert text.split() == ['Postfach"', "Ehingen"]
+    assert "\t" not in text
+    assert "96" not in text

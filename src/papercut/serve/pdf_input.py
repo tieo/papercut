@@ -45,7 +45,11 @@ def parse_tesseract_tsv(tsv: str, image_width: int, image_height: int) -> tuple[
         raise ValueError("Image dimensions must be positive")
 
     lines: list[dict[str, float | str]] = []
-    for row in csv.DictReader(tsv.splitlines(), delimiter="\t"):
+    # Tesseract writes plain tab separated columns and quotes nothing, so a
+    # recognised quote character makes the csv module treat everything up to
+    # the next one as a single field, and a page's coordinates end up inside
+    # its text. QUOTE_NONE keeps every column where it belongs.
+    for row in csv.DictReader(tsv.splitlines(), delimiter="\t", quoting=csv.QUOTE_NONE):
         word = (row.get("text") or "").strip()
         if not word:
             continue
