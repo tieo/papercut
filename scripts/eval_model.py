@@ -27,6 +27,7 @@ from papercut.data.loaders.hf import HfPssCorpus
 from papercut.eval.metrics import mndd, page_metrics, panoptic_quality, stp
 from papercut.models.baselines.tfidf_xgb_layout_sem_vis import TfIdfXgbLayoutSemVis
 from papercut.models.smoothing.blank_gate import BlankPageGated
+from papercut.models.smoothing.rank_decode import ExpectedCount, RankNormalized
 from papercut.models.smoothing.viterbi import SequenceSmoothed
 from papercut.streams.types import Stream
 
@@ -38,6 +39,12 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--train", type=Path, help="Corpus whose boundary statistics fit Viterbi.")
     parser.add_argument("--gated", action="store_true", help="Wrap in the blank-page gate.")
     parser.add_argument("--viterbi", action="store_true", help="Decode with the 2-state HMM.")
+    parser.add_argument("--rank", action="store_true", help="Threshold on rank within the stream.")
+    parser.add_argument(
+        "--expected-count",
+        action="store_true",
+        help="Open as many documents as the stream length and the training prior suggest.",
+    )
     parser.add_argument("--threshold", type=float)
     parser.add_argument("--bootstrap", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
@@ -99,6 +106,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.gated:
         model = BlankPageGated(submodel=model, corpus=test)
         label.append("gated")
+    if args.rank:
+        model = RankNormalized(submodel=model, threshold=args.threshold or 0.75)
+        label.append("rank")
+    if args.expected_count:
+        counted = ExpectedCount(submodel=model)
+        source = HfPssCorpus.load_from_disk(args.train).streams if args.train else test.streams
+        counted.fit_length(source)
+        model = counted
+        label.append(f"count@{counted.pages_per_document:.1f}")
     if args.viterbi:
         smoothed = SequenceSmoothed(submodel=model)
         source = HfPssCorpus.load_from_disk(args.train).streams if args.train else test.streams
