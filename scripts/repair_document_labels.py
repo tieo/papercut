@@ -27,14 +27,22 @@ from papercut.streams.types import PageRef, Stream
 
 
 def seams(texts: Sequence[str]) -> list[int]:
-    """Indices where a page restarts a page count the previous page closed."""
+    """Indices where one document's page count ends and another's begins.
+
+    The evidence has to be a count that reached its own total followed by a
+    count starting again, because a count that merely restarts is the ordinary
+    shape of front matter giving way to a body: a manual numbers its contents
+    in roman numerals and begins the text at one, inside a single document.
+    Accepting a bare restart split six real documents when this was first
+    written, every one of them at a front matter or continuation page.
+    """
     marks = [_pagination(text) for text in texts]
     found = []
     for index in range(1, len(marks)):
-        found_here, number, _ = marks[index]
+        found_here, number, total = marks[index]
         before_found, before_number, before_total = marks[index - 1]
-        restarts = found_here and number == 1
-        closed = before_found and before_number > 1 and before_total > 1
+        restarts = found_here and number == 1 and total > 1
+        closed = before_found and before_number == before_total and before_total > 1
         if restarts and closed:
             found.append(index)
     return found
