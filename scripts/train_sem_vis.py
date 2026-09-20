@@ -40,7 +40,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ngram-range", type=int, nargs=2, metavar=("MIN", "MAX"), default=(1, 2))
     parser.add_argument("--max-features", type=int, default=20_000)
     parser.add_argument("--n-estimators", type=int, default=800)
-    parser.add_argument("--max-depth", type=int, default=4)
+    parser.add_argument("--max-depth", type=int, default=3)
     parser.add_argument("--learning-rate", type=float, default=0.04)
     parser.add_argument("--colsample-bytree", type=float, default=1.0)
     parser.add_argument("--max-bin", type=int, default=256)

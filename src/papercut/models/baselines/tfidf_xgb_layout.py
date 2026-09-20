@@ -272,7 +272,7 @@ class TfIdfXgbLayout:
         ngram_range: tuple[int, int] = (1, 2),
         max_features: int = 20_000,
         n_estimators: int = 800,
-        max_depth: int = 4,
+        max_depth: int = 3,
         learning_rate: float = 0.05,
         colsample_bytree: float = 1.0,
         max_bin: int = 256,
